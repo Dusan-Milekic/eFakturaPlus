@@ -44,7 +44,7 @@ export default function Header() {
 
     return (
         <>
-            <header ref={headerRef} className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${isScrolled ? "bg-blue-950/80 backdrop-blur-xl shadow-lg shadow-blue-500/20 border-b border-blue-400/30" : "bg-gradient-to-b from-blue-950/60 to-transparent backdrop-blur-sm"}`}>
+            <header ref={headerRef} className={`relative top-0 left-0 right-0 z-50 transition-all duration-500 ${isScrolled ? "bg-blue-950/80 backdrop-blur-xl shadow-lg shadow-blue-500/20 border-b border-blue-400/30" : "bg-gradient-to-b from-blue-950/60 to-transparent backdrop-blur-sm"}`}>
                 <div className="max-w-7xl mx-auto px-6 lg:px-10">
                     <div className="flex items-center justify-between py-5">
                         <div className="flex-shrink-0 transform hover:scale-105 transition-transform duration-300">

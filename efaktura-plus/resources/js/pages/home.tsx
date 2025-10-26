@@ -6,7 +6,10 @@ import About from "@/components/About"
 export default function Home() {
     return (
         <>
+
             <Header />
+
+
 
 
             <div className="relative  w-dvw h-dvh top-10">
