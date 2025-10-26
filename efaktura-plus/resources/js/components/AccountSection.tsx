@@ -71,6 +71,13 @@ export default function AccountSection() {
         };
     }, []);
 
+    const RouteToLogin = () => {
+        window.location.href = "/prijava";
+    };
+
+    const RouteToRegistration = () => {
+        window.location.href = "/registracija";
+    }
     return (
         <section
             ref={sectionRef}
@@ -128,7 +135,7 @@ export default function AccountSection() {
 
                             <div className="space-y-4">
                                 <button className="group/btn w-full sm:w-auto bg-white text-blue-600 font-semibold px-10 py-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95">
-                                    <span className="flex items-center justify-center gap-2">
+                                    <span className="flex items-center justify-center gap-2 cursor-pointer" onClick={RouteToLogin}>
                                         Prijavi se
                                         <svg className="w-5 h-5 group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
@@ -172,7 +179,7 @@ export default function AccountSection() {
 
                             <div className="space-y-4">
                                 <button className="group/btn w-full sm:w-auto bg-white text-purple-600 font-semibold px-10 py-4 rounded-full shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-105 active:scale-95">
-                                    <span className="flex items-center justify-center gap-2">
+                                    <span className="flex items-center justify-center gap-2 cursor-pointer" onClick={RouteToRegistration} >
                                         Kontaktirajte nas
                                         <svg className="w-5 h-5 group-hover/btn:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />

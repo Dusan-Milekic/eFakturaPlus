@@ -29,6 +29,12 @@ export default function Links() {
                 </a>
             </li>
             <li>
+                <a href="#author" onClick={(e) => handleScroll(e, "#author")} className="group relative px-5 py-2.5 text-gray-700 dark:text-gray-200 font-medium transition-colors duration-300 hover:text-orange-600 dark:hover:text-orange-400">
+                    <span className="relative z-10">O autoru</span>
+                    <span className="absolute inset-0 bg-orange-50 dark:bg-orange-950/30 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>
+                </a>
+            </li>
+            <li>
                 <a href="#contact" onClick={(e) => handleScroll(e, "#contact")} className="group relative px-5 py-2.5 text-gray-700 dark:text-gray-200 font-medium transition-colors duration-300 hover:text-green-600 dark:hover:text-green-400">
                     <span className="relative z-10">Kontakt</span>
                     <span className="absolute inset-0 bg-green-50 dark:bg-green-950/30 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></span>

@@ -35,6 +35,15 @@ export default function DropDown() {
                     <span className="text-lg font-medium">O nama</span>
                 </li>
 
+                <li onClick={(e) => handleScroll(e, "#author")} className="group flex items-center gap-4 px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-all duration-300 cursor-pointer">
+                    <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5 text-orange-600 dark:text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <span className="text-lg font-medium">O autoru</span>
+                </li>
+
                 <li onClick={(e) => handleScroll(e, "#contact")} className="group flex items-center gap-4 px-6 py-4 text-gray-700 dark:text-gray-200 hover:bg-green-50 dark:hover:bg-green-950/30 transition-all duration-300 cursor-pointer">
                     <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center group-hover:scale-110 transition-transform">
                         <svg className="w-5 h-5 text-green-600 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
