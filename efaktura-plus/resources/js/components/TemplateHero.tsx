@@ -75,7 +75,7 @@ export default function TemplateHero() {
                 </button>
             </div>
 
-            <video src="videohero.mp4" className="absolute inset-0 w-full h-full object-cover" autoPlay loop muted playsInline></video>
+            <video src="videohero1.mp4" className="absolute inset-0 w-full h-full object-cover" autoPlay loop muted playsInline></video>
 
             <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-20 animate-bounce">
                 <svg className="w-8 h-8 text-white/70" fill="none" stroke="currentColor" viewBox="0 0 24 24">
