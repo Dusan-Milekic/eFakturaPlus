@@ -54,7 +54,7 @@ export default function Header() {
                 {/* Dropdown meni */}
                 <div
                     ref={refDropDown}
-                    className="absolute w-full top-28 left-0 flex justify-center md:hidden hidden"
+                    className="absolute w-full top-28 left-0 flex justify-center md:hidden hidden z-50"
                 >
                     <DropDown />
                 </div>
