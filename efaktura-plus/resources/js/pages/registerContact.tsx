@@ -95,8 +95,7 @@ export default function RegisterContact() {
                 return;
             }
 
-            alert('Uspešno poslat zahtev!');
-            console.log('Success:', result);
+            window.location.href = '/uspesna-registracija';
 
             // Reset forme
             setFormData({

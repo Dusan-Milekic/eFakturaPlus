@@ -20,6 +20,10 @@ Route::get('/registracija', function () {
     return Inertia::render('registerContact');
 })->name('registracija');
 
+//Ruta za uspesnu registraciju
+Route::get('/uspesna-registracija', function () {
+    return Inertia::render('UspesnaRegistracija');
+})->name('uspesna.registracija');
 
 // Ruta za registraciju pravnog lica
 
