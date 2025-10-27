@@ -6,6 +6,8 @@ export default function RegisterContact() {
     const formRef = useRef<HTMLFormElement | null>(null);
     const titleRef = useRef<HTMLHeadingElement | null>(null);
     const [formData, setFormData] = useState({
+        username: "",
+        password: "",
         firstName: "",
         lastName: "",
         jmbg: "",
@@ -57,9 +59,74 @@ export default function RegisterContact() {
         });
     };
 
+    const registrujPravnoLice = async () => {
+        try {
+            const TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            const response = await fetch('/registruj-pravno-lice', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': TOKEN || ''
+                },
+                body: JSON.stringify({
+                    username: formData.username,
+                    password: formData.password,
+                    firstName: formData.firstName,
+                    lastName: formData.lastName,
+                    jmbg: formData.jmbg,
+                    dateOfBirth: formData.dateOfBirth,
+                    email: formData.email,
+                    phone: formData.phone,
+                    companyName: formData.companyName,
+                    pib: formData.pib,
+                    address: formData.address,
+                    city: formData.city,
+                    postalCode: formData.postalCode,
+                    message: formData.message,
+                }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                console.error('Error:', result);
+                alert('Greška: ' + (result.message || 'Nepoznata greška'));
+                return;
+            }
+
+            alert('Uspešno poslat zahtev!');
+            console.log('Success:', result);
+
+            // Reset forme
+            setFormData({
+                username: "",
+                password: "",
+                firstName: "",
+                lastName: "",
+                jmbg: "",
+                dateOfBirth: "",
+                email: "",
+                phone: "",
+                companyName: "",
+                pib: "",
+                address: "",
+                city: "",
+                postalCode: "",
+                message: ""
+            });
+
+        } catch (error) {
+            console.error('Fetch error:', error);
+            alert('Greška pri slanju');
+        }
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log(formData);
+        registrujPravnoLice();
+
+
     };
 
     return (
@@ -89,17 +156,39 @@ export default function RegisterContact() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                                 </svg>
                             </div>
+                            Pristupni podaci
+                        </h3>
+                        <div className="grid md:grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label htmlFor="username" className="block text-sm font-medium text-gray-300">Korisničko ime *</label>
+                                <input type="text" id="username" name="username" value={formData.username} onChange={handleChange} maxLength={50} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Izaberite korisničko ime" required />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="password" className="block text-sm font-medium text-gray-300">Lozinka *</label>
+                                <input type="password" id="password" name="password" value={formData.password} onChange={handleChange} minLength={8} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Minimum 8 karaktera" required />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="relative border-t border-gray-700/50 pt-8">
+                        <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
+                            <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
+                                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                </svg>
+                            </div>
                             Lični podaci
                         </h3>
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label htmlFor="firstName" className="block text-sm font-medium text-gray-300">Ime *</label>
-                                <input type="text" id="firstName" name="firstName" value={formData.firstName} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Unesite ime" required />
+                                <input type="text" id="firstName" name="firstName" value={formData.firstName} onChange={handleChange} maxLength={50} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Unesite ime" required />
                             </div>
 
                             <div className="space-y-2">
                                 <label htmlFor="lastName" className="block text-sm font-medium text-gray-300">Prezime *</label>
-                                <input type="text" id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Unesite prezime" required />
+                                <input type="text" id="lastName" name="lastName" value={formData.lastName} onChange={handleChange} maxLength={50} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Unesite prezime" required />
                             </div>
 
                             <div className="space-y-2">
@@ -116,8 +205,8 @@ export default function RegisterContact() {
 
                     <div className="relative border-t border-gray-700/50 pt-8">
                         <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                            <div className="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center">
-                                <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
+                                <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                                 </svg>
                             </div>
@@ -126,20 +215,20 @@ export default function RegisterContact() {
                         <div className="grid md:grid-cols-2 gap-6">
                             <div className="space-y-2">
                                 <label htmlFor="email" className="block text-sm font-medium text-gray-300">Email *</label>
-                                <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="primer@email.com" required />
+                                <input type="email" id="email" name="email" value={formData.email} onChange={handleChange} maxLength={100} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="primer@email.com" required />
                             </div>
 
                             <div className="space-y-2">
                                 <label htmlFor="phone" className="block text-sm font-medium text-gray-300">Telefon *</label>
-                                <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="+381 60 123 4567" required />
+                                <input type="tel" id="phone" name="phone" value={formData.phone} onChange={handleChange} maxLength={20} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="+381 60 123 4567" required />
                             </div>
                         </div>
                     </div>
 
                     <div className="relative border-t border-gray-700/50 pt-8">
                         <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
-                                <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center">
+                                <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                                 </svg>
                             </div>
@@ -158,12 +247,12 @@ export default function RegisterContact() {
 
                             <div className="space-y-2">
                                 <label htmlFor="postalCode" className="block text-sm font-medium text-gray-300">Poštanski broj *</label>
-                                <input type="text" id="postalCode" name="postalCode" value={formData.postalCode} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="11000" required />
+                                <input type="text" id="postalCode" name="postalCode" value={formData.postalCode} onChange={handleChange} maxLength={10} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="11000" required />
                             </div>
 
                             <div className="space-y-2">
                                 <label htmlFor="city" className="block text-sm font-medium text-gray-300">Grad *</label>
-                                <input type="text" id="city" name="city" value={formData.city} onChange={handleChange} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Beograd" required />
+                                <input type="text" id="city" name="city" value={formData.city} onChange={handleChange} maxLength={100} className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" placeholder="Beograd" required />
                             </div>
 
                             <div className="space-y-2">
@@ -175,8 +264,8 @@ export default function RegisterContact() {
 
                     <div className="relative border-t border-gray-700/50 pt-8">
                         <h3 className="text-xl font-semibold text-white mb-6 flex items-center gap-3">
-                            <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                                <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div className="w-10 h-10 bg-pink-500/20 rounded-xl flex items-center justify-center">
+                                <svg className="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />
                                 </svg>
                             </div>
@@ -215,7 +304,7 @@ export default function RegisterContact() {
                     <div className="relative text-center pt-4">
                         <p className="text-gray-400 text-sm">
                             Već imate nalog?{" "}
-                            <a href="/prijava" className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">
+                            <a href="/login" className="text-blue-400 hover:text-blue-300 font-semibold transition-colors">
                                 Prijavite se
                             </a>
                         </p>
