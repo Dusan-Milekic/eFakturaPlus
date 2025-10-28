@@ -26,12 +26,16 @@ Route::get('/uspesna-registracija', function () {
 })->name('uspesna.registracija');
 
 // Ruta za registraciju pravnog lica
-
-
 Route::post('/registruj-pravno-lice', [PravnoLiceController::class, 'store'])
     ->name('pravnoLice.store');
 
 
+
+
+// Ruta za admin panel
+Route::get('/admin',function(){
+    return view('admin');
+})
 
 
 
