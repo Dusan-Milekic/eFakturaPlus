@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use App\Http\Controllers\PravnoLiceController;
+use App\Http\Controllers\DatabaseController;
 // Ruta za početnu stranicu
 Route::get('/', function () {
     return Inertia::render('home');
@@ -32,17 +33,13 @@ Route::post('/registruj-pravno-lice', [PravnoLiceController::class, 'store'])
 
 
 
-// Ruta za admin panel
-Route::get('/admin',function(){
-    return view('admin');
-})
-
-
-
-
-
-
-
+// routes/web.php
+Route::get('/admin', [DatabaseController::class, 'index']);
+Route::get('/admin/table/{name}', [DatabaseController::class, 'showTable'])
+    ->name('admin.table');
+Route::post('/admin/aktiviraj/{jmbg}', [DatabaseController::class, 'aktivirajNalog']);
+Route::post('/admin/deaktiviraj/{jmbg}', [DatabaseController::class, 'deaktivirajNalog']);
+Route::delete('/admin/delete/pravno_lice/{id}', [DatabaseController::class, 'obrisiNalog']);
 
 Route::get('/welcome', function () {
     return Inertia::render('welcome', [
