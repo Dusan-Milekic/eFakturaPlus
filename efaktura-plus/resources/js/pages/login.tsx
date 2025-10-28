@@ -39,11 +39,38 @@ export default function Login() {
 
     }, []);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        console.log({ username, password });
-    };
 
+        try {
+            const TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+            const api = await fetch('/prijavaLica', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': TOKEN || '',
+                },
+                body: JSON.stringify({
+                    username: username,
+                    password: password
+                }),
+            });
+
+            const response = await api.json();
+
+            if (api.ok) { // ili: if (api.status === 200)
+                // Uspešna prijava
+                window.location.href = '/dashboardMeni';
+            } else {
+                // Prijava nije uspela
+                alert(response.message || 'Prijava nije uspela');
+            }
+        } catch {
+            alert('Greška pri povezivanju. Pokušajte ponovo.');
+        }
+    };
     return (
         <div ref={containerRef} className="relative flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-950 via-blue-950 to-gray-950 overflow-hidden">
             <div className="absolute top-20 right-20 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>

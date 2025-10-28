@@ -7,23 +7,71 @@
     @vite(['resources/css/app.css', 'resources/js/app.tsx'])
 </head>
 <body class="bg-gray-950">
-    <x-admin-navigation>
-        <ul>
-            @foreach ($tables as $table)
-                <li>
-                    <a href="/admin/table/{{ $table->Tables_in_efaktura_plus }}" class="{{ $name === $table->Tables_in_efaktura_plus ? 'bg-blue-500/20 text-white' : '' }}">
-                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                        <span>{{ Str::replace('_', ' ', Str::title($table->Tables_in_efaktura_plus)) }}</span>
-                    </a>
-                </li>
-            @endforeach
-        </ul>
-    </x-admin-navigation>
 
-    <main class="p-6 min-h-screen">
+    <!-- Navigation Sidebar -->
+    <aside class="fixed left-0 top-0 h-screen w-64 bg-gray-900 border-r border-white/10 flex flex-col">
+        <!-- Header -->
+        <div class="p-6 border-b border-white/10">
+            <h1 class="text-xl font-bold text-white">Admin Panel</h1>
+            <p class="text-xs text-gray-400 mt-1">Upravljanje bazom</p>
+        </div>
+
+        <!-- Tables List - Scrollable -->
+        <div class="flex-1 overflow-y-auto p-4">
+            <nav>
+                <ul class="space-y-1">
+                    @foreach ($tables as $table)
+                        <li>
+                            <a href="/admin/table/{{ $table->Tables_in_efaktura_plus }}"
+                               class="flex items-center gap-3 px-4 py-3 rounded-lg transition-colors {{ $name === $table->Tables_in_efaktura_plus ? 'bg-blue-500/20 text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white' }}">
+                                <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                </svg>
+                                <span class="text-sm font-medium">{{ Str::replace('_', ' ', Str::title($table->Tables_in_efaktura_plus)) }}</span>
+                            </a>
+                        </li>
+                    @endforeach
+                </ul>
+            </nav>
+        </div>
+
+        <!-- Logout Button - Fixed at Bottom -->
+        <div class="p-4 border-t border-white/10">
+            <a href="/admin"
+               onclick="event.preventDefault(); if(confirm('Da li ste sigurni da želite da se odjavite?')) window.location.href='/admin';"
+               class="flex items-center gap-3 px-4 py-3 text-gray-400 hover:bg-red-500/20 hover:text-red-400 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span class="text-sm font-medium">Odjavi se</span>
+            </a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="ml-64 p-6 min-h-screen">
         <div class="max-w-7xl mx-auto">
+
+            <!-- Success Message -->
+            @if(session('success'))
+            <div class="mb-6 bg-green-500/10 border border-green-500/50 text-green-400 px-6 py-4 rounded-xl flex items-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                <span class="font-medium">{{ session('success') }}</span>
+            </div>
+            @endif
+
+            <!-- Error Message -->
+            @if(session('error'))
+            <div class="mb-6 bg-red-500/10 border border-red-500/50 text-red-400 px-6 py-4 rounded-xl flex items-center gap-3">
+                <svg class="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                </svg>
+                <span class="font-medium">{{ session('error') }}</span>
+            </div>
+            @endif
+
             @if($rows && $rows->count() > 0)
                 <!-- Prikaz tabele -->
                 <div class="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl p-6 rounded-2xl border border-white/10 shadow-2xl">
@@ -79,7 +127,7 @@
 
                                                 @if($name === 'pravno_lice')
                                                     @if($row->is_verified)
-                                                        <form action="/admin/deaktiviraj/{{ $row->jmbg }}" method="POST" class="inline">
+                                                        <form action="{{ route('admin.deaktiviraj', $row->jmbg) }}" method="POST" class="inline">
                                                             @csrf
                                                             <button type="submit" class="p-1.5 text-orange-400 hover:bg-orange-500/20 rounded transition-colors" title="Deaktiviraj">
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,7 +136,7 @@
                                                             </button>
                                                         </form>
                                                     @else
-                                                        <form action="/admin/aktiviraj/{{ $row->jmbg }}" method="POST" class="inline">
+                                                        <form action="{{ route('admin.aktiviraj', $row->jmbg) }}" method="POST" class="inline">
                                                             @csrf
                                                             <button type="submit" class="p-1.5 text-green-400 hover:bg-green-500/20 rounded transition-colors" title="Aktiviraj">
                                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +153,7 @@
                                                     </button>
                                                 @endif
 
-                                                <form action="/admin/delete/{{ $name }}/{{ $row->id }}" method="POST" class="inline" onsubmit="return confirm('Da li ste sigurni da želite da obrišete ovaj red?')">
+                                                <form action="{{ route('admin.delete', [$name, $row->id]) }}" method="POST" class="inline" onsubmit="return confirm('Da li ste sigurni da želite da obrišete ovaj red?')">
                                                     @csrf
                                                     @method('DELETE')
                                                     <button type="submit" class="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition-colors" title="Obriši">

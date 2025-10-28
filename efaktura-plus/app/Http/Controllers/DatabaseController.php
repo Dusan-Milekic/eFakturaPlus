@@ -7,16 +7,35 @@ use Illuminate\Support\Facades\DB;
 
 class DatabaseController extends Controller
 {
-    public function index()
+    public function login(Request $request)
     {
-        $tables = collect(DB::select('SHOW TABLES'))
-            ->map(fn($table) => (object) ['Tables_in_efaktura_plus' => $table->Tables_in_efaktura_plus]);
+        // Ako je GET zahtev, prikaži login formu
+        if ($request->isMethod('get')) {
+            return view('adminLogin');
+        }
 
-        $rows = null;
-        $name = null;
-        $columns = [];
+        // Ako je POST zahtev, obradi login
+        if ($request->isMethod('post')) {
+            $request->validate([
+                'username' => 'required',
+                'password' => 'required',
+            ]);
 
-        return view('admin', compact('tables', 'rows', 'name', 'columns'));
+            if ($request->input('username') === 'admin' && $request->input('password') === 'password') {
+                // Uspešna prijava
+                $tables = collect(DB::select('SHOW TABLES'))
+                    ->map(fn($table) => (object) ['Tables_in_efaktura_plus' => $table->Tables_in_efaktura_plus]);
+
+                $rows = null;
+                $name = null;
+                $columns = [];
+
+                return view('admin', compact('tables', 'rows', 'name', 'columns'));
+            } else {
+                // Neuspešna prijava
+                return redirect()->back()->with('error', 'Pogrešno korisničko ime ili lozinka.');
+            }
+        }
     }
 
     public function showTable($name)
@@ -25,30 +44,42 @@ class DatabaseController extends Controller
         $tables = collect(DB::select('SHOW TABLES'))
             ->map(fn($table) => (object) ['Tables_in_efaktura_plus' => $table->Tables_in_efaktura_plus]);
 
-        // Uzmi sve redove iz odabrane tabele
-        $rows = DB::table($name)->get();
+        // Uzmi podatke iz selektovane tabele
+        $rows = collect(DB::select("SELECT * FROM `{$name}`"));
 
         // Uzmi nazive kolona
-        $columns = !$rows->isEmpty() ? array_keys((array) $rows->first()) : [];
+        $columns = [];
+        if ($rows->count() > 0) {
+            $columns = array_keys((array) $rows->first());
+        }
 
-        return view("admin", compact('tables', 'rows', 'name', 'columns'));
-    }
-    public function aktivirajNalog($JMBG)
-    {
-        DB::table('pravno_lice')->where('jmbg', $JMBG)->update(['is_verified' => true]);
-        return redirect()->back();
+        return view('admin', compact('tables', 'rows', 'name', 'columns'));
     }
 
-    public function deaktivirajNalog($JMBG)
+    public function aktivirajNalog($jmbg)
     {
-        DB::table('pravno_lice')->where('jmbg', $JMBG)->update(['is_verified' => false]);
-        return redirect()->back();
+        DB::table('pravno_lice')
+            ->where('jmbg', $jmbg)
+            ->update(['is_verified' => true]);
+
+        return redirect()->back()->with('success', 'Nalog je uspešno aktiviran.');
+    }
+
+    public function deaktivirajNalog($jmbg)
+    {
+        DB::table('pravno_lice')
+            ->where('jmbg', $jmbg)
+            ->update(['is_verified' => false]);
+
+        return redirect()->back()->with('success', 'Nalog je uspešno deaktiviran.');
     }
 
     public function obrisiNalog($id)
     {
-        DB::table('pravno_lice')->where('id', $id)->delete();
-        return redirect()->back();
-    }
+        DB::table('pravno_lice')
+            ->where('id', $id)
+            ->delete();
 
+        return redirect()->back()->with('success', 'Nalog je uspešno obrisan.');
+    }
 }

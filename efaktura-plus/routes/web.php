@@ -5,6 +5,7 @@ use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use App\Http\Controllers\PravnoLiceController;
 use App\Http\Controllers\DatabaseController;
+
 // Ruta za početnu stranicu
 Route::get('/', function () {
     return Inertia::render('home');
@@ -14,6 +15,15 @@ Route::get('/', function () {
 Route::get('/prijava', function () {
     return Inertia::render('login');
 })->name('prijava');
+
+Route::post('/prijavaLica', [App\Http\Controllers\NalogController::class, 'prijava'])
+    ->name('prijavaLica');
+
+
+Route::get('/dashboardMeni', function () {
+    return Inertia::render('dashboardMeni');
+})->name('dashboardMeni');
+
 
 
 // Ruta za registraciju kontakt osobe
@@ -30,16 +40,15 @@ Route::get('/uspesna-registracija', function () {
 Route::post('/registruj-pravno-lice', [PravnoLiceController::class, 'store'])
     ->name('pravnoLice.store');
 
+// Admin login rute
+Route::get('/admin', [DatabaseController::class, 'login'])->name('admin.login');
+Route::post('/admin', [DatabaseController::class, 'login'])->name('admin.login.submit');
 
-
-
-// routes/web.php
-Route::get('/admin', [DatabaseController::class, 'index']);
-Route::get('/admin/table/{name}', [DatabaseController::class, 'showTable'])
-    ->name('admin.table');
-Route::post('/admin/aktiviraj/{jmbg}', [DatabaseController::class, 'aktivirajNalog']);
-Route::post('/admin/deaktiviraj/{jmbg}', [DatabaseController::class, 'deaktivirajNalog']);
-Route::delete('/admin/delete/pravno_lice/{id}', [DatabaseController::class, 'obrisiNalog']);
+// Admin zaštićene rute
+Route::get('/admin/table/{name}', [DatabaseController::class, 'showTable'])->name('admin.table');
+Route::post('/admin/aktiviraj/{jmbg}', [DatabaseController::class, 'aktivirajNalog'])->name('admin.aktiviraj');
+Route::post('/admin/deaktiviraj/{jmbg}', [DatabaseController::class, 'deaktivirajNalog'])->name('admin.deaktiviraj');
+Route::delete('/admin/delete/pravno_lice/{id}', [DatabaseController::class, 'obrisiNalog'])->name('admin.delete');
 
 Route::get('/welcome', function () {
     return Inertia::render('welcome', [
