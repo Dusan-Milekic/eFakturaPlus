@@ -1,12 +1,23 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+
 
 gsap.registerPlugin(ScrollTrigger);
 
 export default function DashboardMeni() {
     const containerRef = useRef<HTMLDivElement>(null);
     const cardsRef = useRef<HTMLDivElement>(null);
+    const [name, setName] = useState<string>(() => {
+        try {
+            const user = JSON.parse(localStorage.getItem('userData') || '{}');
+            return user.ime && user.prezime ? `${user.ime} ${user.prezime}` : 'NISTE PRIJAVLJENI';
+        } catch {
+            return 'Korisnik';
+        }
+    });
+
+
 
     useEffect(() => {
         const container = containerRef.current;
@@ -44,7 +55,7 @@ export default function DashboardMeni() {
             count: null,
             action: "Kreiraj novi dokument",
             bgColor: "from-blue-600 to-cyan-600",
-            link: "/dokumenti/novi"
+            link: "/IzlazniDokumenti"
         },
         {
             title: "Ulazni dokumenti",
@@ -132,13 +143,29 @@ export default function DashboardMeni() {
             link: "/pdv/zbirna-arhiva"
         }
     ];
+    if (localStorage.getItem('userData') === null) {
 
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white p-6">
+                <div className="max-w-md text-center">
+                    <h1 className="text-3xl font-bold mb-6">NISTE PRIJAVLJENI</h1>
+                    <p className="mb-6">Molimo vas da se prijavite kako biste pristupili kontrolnoj tabli.</p>
+                    <a
+                        href="/prijava"
+                        className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors duration-300"
+                    >
+                        Idi na stranicu za prijavu
+                    </a>
+                </div>
+            </div>
+        );
+    }
     return (
         <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-gray-950 via-blue-950 to-gray-950 py-12 px-6">
             <div className="max-w-7xl mx-auto">
                 <div className="mb-12">
                     <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-white via-blue-200 to-white bg-clip-text text-transparent mb-4">
-                        Zdravo, ГОРАН МИЛЕКИЋ
+                        {name}
                     </h1>
                     <p className="text-gray-400 text-lg">Dobrodošli nazad! Izaberite opciju za nastavak.</p>
                 </div>

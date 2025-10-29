@@ -40,6 +40,12 @@ Route::get('/uspesna-registracija', function () {
 Route::post('/registruj-pravno-lice', [PravnoLiceController::class, 'store'])
     ->name('pravnoLice.store');
 
+
+Route::get('/IzlazniDokumenti', function () {
+    return Inertia::render('IzlazniDokumetni');
+})->name('IzlazniDokumenti');
+
+
 // Admin login rute
 Route::get('/admin', [DatabaseController::class, 'login'])->name('admin.login');
 Route::post('/admin', [DatabaseController::class, 'login'])->name('admin.login.submit');
@@ -49,6 +55,9 @@ Route::get('/admin/table/{name}', [DatabaseController::class, 'showTable'])->nam
 Route::post('/admin/aktiviraj/{jmbg}', [DatabaseController::class, 'aktivirajNalog'])->name('admin.aktiviraj');
 Route::post('/admin/deaktiviraj/{jmbg}', [DatabaseController::class, 'deaktivirajNalog'])->name('admin.deaktiviraj');
 Route::delete('/admin/delete/pravno_lice/{id}', [DatabaseController::class, 'obrisiNalog'])->name('admin.delete');
+
+
+
 
 Route::get('/welcome', function () {
     return Inertia::render('welcome', [

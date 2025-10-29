@@ -52,6 +52,8 @@ class NalogController extends Controller
                 'prezime' => $korisnik->prezime,
                 'email' => $korisnik->email,
                 'naziv_firme' => $korisnik->naziv_firme,
+                'jmbg' => $korisnik->jmbg,
+                'pib' => $korisnik->pib
             ]
         ], 200);
     }

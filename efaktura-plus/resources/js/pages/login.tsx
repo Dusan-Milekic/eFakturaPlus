@@ -62,6 +62,9 @@ export default function Login() {
 
             if (api.ok) { // ili: if (api.status === 200)
                 // Uspešna prijava
+
+                localStorage.clear();
+                localStorage.setItem('userData', JSON.stringify(response.user));
                 window.location.href = '/dashboardMeni';
             } else {
                 // Prijava nije uspela
