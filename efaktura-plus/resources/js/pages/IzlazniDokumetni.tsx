@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 
-const user = JSON.parse(localStorage.getItem('userData') || '{}');
-
 interface PravnaLica {
     lica: Array<{ naziv_firme: string; jmbg: string }>;
 }
@@ -36,6 +34,17 @@ interface FormData {
     stavke: Stavka[];
 }
 
+interface User {
+    id: number;
+    username: string;
+    ime: string;
+    prezime: string;
+    email: string;
+    naziv_firme: string;
+    jmbg: string;
+    pib: string;
+}
+
 const fetchPravnaLica = async (): Promise<PravnaLica | null> => {
     const fetchedData = await fetch("/pravna-lica/getAll");
     if (!fetchedData.ok) return null;
@@ -48,6 +57,7 @@ export default function IzlazniDokumenti() {
     const [lica, setLica] = useState<PravnaLica | null>(null);
     const [searchedText, setText] = useState<string>("");
     const [showOtpremnica, setShowOtpremnica] = useState(false);
+    const [user, setUser] = useState<User | null>(null);
 
     const [formData, setFormData] = useState<FormData>({
         listaValuta: 'RSD',
@@ -77,10 +87,23 @@ export default function IzlazniDokumenti() {
     });
 
     useEffect(() => {
+        const loadUserData = () => {
+            try {
+                const userData = localStorage.getItem('userData');
+                if (userData) {
+                    setUser(JSON.parse(userData));
+                }
+            } catch (error) {
+                console.error('Error parsing user data:', error);
+            }
+        };
+
         const fetchData = async () => {
             const data = await fetchPravnaLica();
             setLica(data);
         };
+
+        loadUserData();
         fetchData();
     }, []);
 
@@ -101,12 +124,23 @@ export default function IzlazniDokumenti() {
     };
 
     const handleStavkaChange = (index: number, field: keyof Stavka, value: string | number) => {
-        setFormData(prev => ({
-            ...prev,
-            stavke: prev.stavke.map((stavka, i) =>
-                i === index ? { ...stavka, [field]: value } : stavka
-            )
-        }));
+        setFormData(prev => {
+            const newStavke = prev.stavke.map((stavka, i) => {
+                if (i === index) {
+                    const updatedStavka = { ...stavka, [field]: value };
+
+                    if (field === 'kolicina' || field === 'cena' || field === 'iznosUmanjenja') {
+                        updatedStavka.iznosBezPDV =
+                            (updatedStavka.kolicina * updatedStavka.cena) - updatedStavka.iznosUmanjenja;
+                    }
+
+                    return updatedStavka;
+                }
+                return stavka;
+            });
+
+            return { ...prev, stavke: newStavke };
+        });
     };
 
     const dodajStavku = () => {
@@ -131,14 +165,16 @@ export default function IzlazniDokumenti() {
     const obrisiStavku = (index: number) => {
         setFormData(prev => ({
             ...prev,
-            stavke: prev.stavke.filter((_, i) => i !== index)
+            stavke: prev.stavke.filter((_, i) => i !== index).map((stavka, i) => ({
+                ...stavka,
+                redniBroj: i + 1
+            }))
         }));
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('Form data:', formData);
-        // API call here
+        PosaljiDokument();
     };
 
     const ChangeSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -148,6 +184,137 @@ export default function IzlazniDokumenti() {
     const filteredLica = lica?.lica.filter(l =>
         (l.naziv_firme + ' ' + l.jmbg).toLowerCase().includes(searchedText.toLowerCase())
     ) ?? [];
+
+    const izracunajUkupno = () => {
+        const ukupnoBezPDV = formData.stavke.reduce((sum, stavka) => sum + stavka.iznosBezPDV, 0);
+        const ukupanPDV = formData.stavke.reduce((sum, stavka) => {
+            const pdvIznos = stavka.iznosBezPDV * (stavka.pdvProcenat / 100);
+            return sum + pdvIznos;
+        }, 0);
+        const ukupnoSaPDV = ukupnoBezPDV + ukupanPDV;
+
+        return {
+            ukupnoBezPDV: ukupnoBezPDV.toFixed(2),
+            ukupanPDV: ukupanPDV.toFixed(2),
+            ukupnoSaPDV: ukupnoSaPDV.toFixed(2)
+        };
+    };
+
+    const ukupno = izracunajUkupno();
+
+    const PosaljiDokument = async () => {
+        try {
+            if (!formData.brojDokumenta) {
+                alert('Broj dokumenta je obavezan!');
+                return;
+            }
+
+            if (!searchedText) {
+                alert('Morate izabrati kupca!');
+                return;
+            }
+
+            if (formData.stavke.length === 0 || formData.stavke.some(s => !s.naziv || s.kolicina <= 0)) {
+                alert('Morate uneti validne stavke!');
+                return;
+            }
+
+            if (!user) {
+                alert('Korisnički podaci nisu učitani!');
+                return;
+            }
+
+            const dokumentZaSlanje = {
+                listaValuta: formData.listaValuta,
+                tipDokumenta: formData.tipDokumenta,
+                brojDokumenta: formData.brojDokumenta,
+                brojUgovora: formData.brojUgovora,
+                brojNarudzbenice: formData.brojNarudzbenice,
+                brojOkvirnogSporazuma: formData.brojOkvirnogSporazuma,
+                sifraObjekta: formData.sifraObjekta,
+                interniBrojRutiranja: formData.interniBrojRutiranja,
+                datumPrometa: formData.datumPrometa,
+                datumDospeca: formData.datumDospeca,
+                pdvObaveza: formData.pdvObaveza,
+                prodavacPib: user.pib,
+                prodavacNaziv: user.naziv_firme,
+                kupacJmbg: searchedText,
+                stavke: formData.stavke.map(stavka => ({
+                    redniBroj: stavka.redniBroj,
+                    naziv: stavka.naziv,
+                    kolicina: stavka.kolicina,
+                    jedinicaMere: stavka.jedinicaMere,
+                    cena: stavka.cena,
+                    iznosUmanjenja: stavka.iznosUmanjenja,
+                    iznosBezPDV: stavka.iznosBezPDV,
+                    pdvProcenat: stavka.pdvProcenat,
+                    pdvKategorija: stavka.pdvKategorija,
+                    identifikatorStavke: stavka.identifikatorStavke,
+                    klasifikacija: stavka.klasifikacija
+                }))
+            };
+            const TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+            const response = await fetch('/posaljiDokument', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': TOKEN || ''
+                },
+                body: JSON.stringify(dokumentZaSlanje)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Greška pri slanju dokumenta');
+            }
+
+            const result = await response.json();
+
+            alert('Dokument uspešno poslat!');
+            console.log('Odgovor:', result);
+
+            setFormData({
+                listaValuta: 'RSD',
+                tipDokumenta: 'Faktura',
+                brojDokumenta: '',
+                brojUgovora: '',
+                brojNarudzbenice: '',
+                brojOkvirnogSporazuma: '',
+                sifraObjekta: '',
+                interniBrojRutiranja: '',
+                datumPrometa: new Date().toISOString().split('T')[0],
+                datumDospeca: new Date().toISOString().split('T')[0],
+                pdvObaveza: 'obracunava',
+                stavke: [{
+                    redniBroj: 1,
+                    naziv: '',
+                    kolicina: 0,
+                    jedinicaMere: 'kom',
+                    cena: 0,
+                    iznosUmanjenja: 0,
+                    iznosBezPDV: 0,
+                    pdvProcenat: 20,
+                    pdvKategorija: 'S20',
+                    identifikatorStavke: '',
+                    klasifikacija: ''
+                }]
+            });
+            setText('');
+
+        } catch (error) {
+            console.error('Greška:', error);
+            alert(error instanceof Error ? error.message : 'Došlo je do greške pri slanju dokumenta. Molimo pokušajte ponovo.');
+        }
+    };
+
+    if (!user) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-gray-950 via-blue-950 to-gray-950 flex items-center justify-center">
+                <div className="text-white text-xl">Učitavanje...</div>
+            </div>
+        );
+    }
 
     return (
         <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-gray-950 via-blue-950 to-gray-950 py-12 px-6">
@@ -273,31 +440,29 @@ export default function IzlazniDokumenti() {
                         <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
                             <h2 className="text-xl font-semibold text-white mb-4">KUPAC <span className="text-red-400">*</span></h2>
                             <div className="space-y-3">
-
-                                <div className="relative w-full max-w-sm space-y-3">
+                                <div className="relative w-full space-y-3">
                                     <input
                                         type="text"
                                         onChange={ChangeSearch}
                                         value={searchedText}
                                         placeholder="PRETRAGA PO PIBU ILI NAZIVU FIRME"
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-3 py-2 bg-gray-900/80 border border-gray-700 rounded-md text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                     />
                                     <div className="relative">
                                         <select
                                             value={searchedText}
                                             onChange={e => setText(e.target.value)}
-                                            className="w-full bg-white text-gray-700 text-sm border border-gray-300 rounded-md pl-3 pr-8 py-2
-                          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                          hover:border-gray-400 shadow-sm appearance-none cursor-pointer"
+                                            className="w-full bg-gray-900/80 text-white text-sm border border-gray-700 rounded-md pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-gray-600 shadow-sm appearance-none cursor-pointer"
                                         >
+                                            <option value="">Izaberite kupca</option>
                                             {filteredLica.map(l => (
                                                 <option key={l.jmbg} value={l.jmbg}>
-                                                    {l.naziv_firme} {l.jmbg}
+                                                    {l.naziv_firme} - {l.jmbg}
                                                 </option>
                                             ))}
                                         </select>
                                         <svg
-                                            className="pointer-events-none absolute top-1/2 right-2 transform -translate-y-1/2 h-4 w-4 text-gray-700"
+                                            className="pointer-events-none absolute top-1/2 right-2 transform -translate-y-1/2 h-4 w-4 text-gray-400"
                                             xmlns="http://www.w3.org/2000/svg"
                                             fill="none"
                                             viewBox="0 0 24 24"
@@ -310,11 +475,6 @@ export default function IzlazniDokumenti() {
                             </div>
                         </div>
                     </div>
-
-
-
-
-
 
                     {/* PDV Osnov */}
                     <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
@@ -455,7 +615,7 @@ export default function IzlazniDokumenti() {
                                                     className="w-24 px-2 py-1 bg-gray-900/80 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                 />
                                             </td>
-                                            <td className="px-3 py-3 text-white">0.00</td>
+                                            <td className="px-3 py-3 text-white">{stavka.iznosBezPDV.toFixed(2)}</td>
                                             <td className="px-3 py-3">
                                                 <input
                                                     type="number"
@@ -479,7 +639,8 @@ export default function IzlazniDokumenti() {
                                                 <button
                                                     type="button"
                                                     onClick={() => obrisiStavku(index)}
-                                                    className="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition-colors"
+                                                    disabled={formData.stavke.length === 1}
+                                                    className="p-1.5 text-red-400 hover:bg-red-500/20 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -508,12 +669,16 @@ export default function IzlazniDokumenti() {
                     <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
                         <div className="space-y-3 text-right">
                             <div className="flex justify-between items-center">
-                                <span className="text-gray-400">Iznos za zaokruživanje</span>
-                                <span className="text-white font-semibold">0.00</span>
+                                <span className="text-gray-400">Ukupno bez PDV</span>
+                                <span className="text-white font-semibold">{ukupno.ukupnoBezPDV} {formData.listaValuta}</span>
                             </div>
-                            <div className="flex justify-between items-center text-xl">
+                            <div className="flex justify-between items-center">
+                                <span className="text-gray-400">Ukupan PDV</span>
+                                <span className="text-white font-semibold">{ukupno.ukupanPDV} {formData.listaValuta}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xl border-t border-white/10 pt-3">
                                 <span className="text-gray-400">Iznos za plaćanje</span>
-                                <span className="text-white font-bold">0.00</span>
+                                <span className="text-white font-bold">{ukupno.ukupnoSaPDV} {formData.listaValuta}</span>
                             </div>
                         </div>
                     </div>
@@ -522,6 +687,37 @@ export default function IzlazniDokumenti() {
                     <div className="flex flex-wrap gap-4 justify-end">
                         <button
                             type="button"
+                            onClick={() => {
+                                if (confirm('Da li ste sigurni da želite da obrišete sve podatke?')) {
+                                    setFormData({
+                                        listaValuta: 'RSD',
+                                        tipDokumenta: 'Faktura',
+                                        brojDokumenta: '',
+                                        brojUgovora: '',
+                                        brojNarudzbenice: '',
+                                        brojOkvirnogSporazuma: '',
+                                        sifraObjekta: '',
+                                        interniBrojRutiranja: '',
+                                        datumPrometa: new Date().toISOString().split('T')[0],
+                                        datumDospeca: new Date().toISOString().split('T')[0],
+                                        pdvObaveza: 'obracunava',
+                                        stavke: [{
+                                            redniBroj: 1,
+                                            naziv: '',
+                                            kolicina: 0,
+                                            jedinicaMere: 'kom',
+                                            cena: 0,
+                                            iznosUmanjenja: 0,
+                                            iznosBezPDV: 0,
+                                            pdvProcenat: 20,
+                                            pdvKategorija: 'S20',
+                                            identifikatorStavke: '',
+                                            klasifikacija: ''
+                                        }]
+                                    });
+                                    setText('');
+                                }
+                            }}
                             className="px-6 py-3 bg-gray-800 text-white rounded-xl font-medium hover:bg-gray-700 transition-colors"
                         >
                             Obriši
@@ -546,7 +742,7 @@ export default function IzlazniDokumenti() {
                         </button>
                     </div>
                 </form>
-            </div >
-        </div >
+            </div>
+        </div>
     );
 }
