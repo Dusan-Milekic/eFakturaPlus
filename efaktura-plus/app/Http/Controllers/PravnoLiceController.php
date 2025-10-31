@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use App\Models\PravnoLice;
 use Illuminate\Support\Facades\Hash;
@@ -67,6 +68,15 @@ class PravnoLiceController extends Controller
 
         return response()->json([
             'message' => 'Nalog uspešno obrisan'
+        ], 200);
+    }
+
+
+    public function KorsiniciInfoAll()
+    {
+        $Pravna_Lica = PravnoLice::all()->except("password");
+        return response()->json([
+            'lica' => $Pravna_Lica->toArray()
         ], 200);
     }
 }

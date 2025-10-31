@@ -5,6 +5,7 @@ use Inertia\Inertia;
 use Laravel\Fortify\Features;
 use App\Http\Controllers\PravnoLiceController;
 use App\Http\Controllers\DatabaseController;
+use App\Models\PravnoLice;
 
 // Ruta za početnu stranicu
 Route::get('/', function () {
@@ -25,6 +26,8 @@ Route::get('/dashboardMeni', function () {
 })->name('dashboardMeni');
 
 
+//Ruta za dobijanje svih korisnika na aplikaciji
+Route::get('/pravna-lica/getAll', [PravnoLiceController::class, 'KorsiniciInfoAll']);
 
 // Ruta za registraciju kontakt osobe
 Route::get('/registracija', function () {

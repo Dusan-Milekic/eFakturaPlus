@@ -1,7 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 
 const user = JSON.parse(localStorage.getItem('userData') || '{}');
+
+interface PravnaLica {
+    lica: Array<{ naziv_firme: string; jmbg: string }>;
+}
 
 interface Stavka {
     redniBroj: number;
@@ -32,9 +36,18 @@ interface FormData {
     stavke: Stavka[];
 }
 
+const fetchPravnaLica = async (): Promise<PravnaLica | null> => {
+    const fetchedData = await fetch("/pravna-lica/getAll");
+    if (!fetchedData.ok) return null;
+    return fetchedData.json();
+}
+
 export default function IzlazniDokumenti() {
     const containerRef = useRef<HTMLDivElement>(null);
     const formRef = useRef<HTMLFormElement>(null);
+    const [lica, setLica] = useState<PravnaLica | null>(null);
+    const [searchedText, setText] = useState<string>("");
+    const [showOtpremnica, setShowOtpremnica] = useState(false);
 
     const [formData, setFormData] = useState<FormData>({
         listaValuta: 'RSD',
@@ -63,34 +76,28 @@ export default function IzlazniDokumenti() {
         }]
     });
 
-    const [showOtpremnica, setShowOtpremnica] = useState(false);
+    useEffect(() => {
+        const fetchData = async () => {
+            const data = await fetchPravnaLica();
+            setLica(data);
+        };
+        fetchData();
+    }, []);
 
     useEffect(() => {
         const container = containerRef.current;
         const form = formRef.current;
-
         if (!container || !form) return;
 
-        gsap.set(form.children, {
-            y: 40,
-            opacity: 0
-        });
-
+        gsap.set(form.children, { y: 40, opacity: 0 });
         const tl = gsap.timeline();
         tl.to(form.children, {
-            y: 0,
-            opacity: 1,
-            duration: 0.5,
-            stagger: 0.08,
-            ease: "power3.out"
+            y: 0, opacity: 1, duration: 0.5, stagger: 0.08, ease: "power3.out"
         });
     }, []);
 
     const handleInputChange = (field: keyof FormData, value: string) => {
-        setFormData(prev => ({
-            ...prev,
-            [field]: value
-        }));
+        setFormData(prev => ({ ...prev, [field]: value }));
     };
 
     const handleStavkaChange = (index: number, field: keyof Stavka, value: string | number) => {
@@ -131,36 +138,41 @@ export default function IzlazniDokumenti() {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         console.log('Form data:', formData);
-        // API call ovde
+        // API call here
     };
+
+    const ChangeSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+        setText(e.target.value);
+    };
+
+    const filteredLica = lica?.lica.filter(l =>
+        (l.naziv_firme + ' ' + l.jmbg).toLowerCase().includes(searchedText.toLowerCase())
+    ) ?? [];
 
     return (
         <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-gray-950 via-blue-950 to-gray-950 py-12 px-6">
             <div className="max-w-7xl mx-auto">
-                {/* Header */}
+
                 <div className="mb-8">
                     <nav className="text-sm text-gray-400 mb-4">
                         <a href="/dashboard" className="hover:text-blue-400 transition-colors">Dashboard</a>
                         <span className="mx-2">/</span>
                         <span className="text-white">Izlazni dokumenti</span>
                     </nav>
-                    <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-blue-200 to-white bg-clip-text text-transparent">
-                        Nacrt
-                    </h1>
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-white via-blue-200 to-white bg-clip-text text-transparent">Nacrt</h1>
                 </div>
 
                 <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+
                     {/* Osnovne informacije */}
                     <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
                         <h2 className="text-xl font-semibold text-white mb-6">Osnovne informacije</h2>
-
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Lista valuta */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Lista valuta</label>
                                 <select
                                     value={formData.listaValuta}
-                                    onChange={(e) => handleInputChange('listaValuta', e.target.value)}
+                                    onChange={e => handleInputChange('listaValuta', e.target.value)}
                                     className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
                                     <option value="RSD">RSD</option>
@@ -169,12 +181,11 @@ export default function IzlazniDokumenti() {
                                 </select>
                             </div>
 
-                            {/* Tip dokumenta */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Tip dokumenta</label>
                                 <select
                                     value={formData.tipDokumenta}
-                                    onChange={(e) => handleInputChange('tipDokumenta', e.target.value)}
+                                    onChange={e => handleInputChange('tipDokumenta', e.target.value)}
                                     className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 >
                                     <option value="Faktura">Faktura</option>
@@ -183,31 +194,28 @@ export default function IzlazniDokumenti() {
                                 </select>
                             </div>
 
-                            {/* Broj dokumenta */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Broj dokumenta</label>
                                 <input
                                     type="text"
                                     value={formData.brojDokumenta}
-                                    onChange={(e) => handleInputChange('brojDokumenta', e.target.value)}
+                                    onChange={e => handleInputChange('brojDokumenta', e.target.value)}
                                     placeholder="63"
                                     className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
 
-                            {/* Broj ugovora */}
                             <div>
                                 <label className="block text-sm font-medium text-gray-300 mb-2">Broj ugovora</label>
                                 <input
                                     type="text"
                                     value={formData.brojUgovora}
-                                    onChange={(e) => handleInputChange('brojUgovora', e.target.value)}
+                                    onChange={e => handleInputChange('brojUgovora', e.target.value)}
                                     className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 />
                             </div>
                         </div>
 
-                        {/* Otpremnica toggle */}
                         <button
                             type="button"
                             onClick={() => setShowOtpremnica(!showOtpremnica)}
@@ -226,7 +234,7 @@ export default function IzlazniDokumenti() {
                                     <input
                                         type="text"
                                         value={formData.brojNarudzbenice}
-                                        onChange={(e) => handleInputChange('brojNarudzbenice', e.target.value)}
+                                        onChange={e => handleInputChange('brojNarudzbenice', e.target.value)}
                                         className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
@@ -235,7 +243,7 @@ export default function IzlazniDokumenti() {
                                     <input
                                         type="text"
                                         value={formData.brojOkvirnogSporazuma}
-                                        onChange={(e) => handleInputChange('brojOkvirnogSporazuma', e.target.value)}
+                                        onChange={e => handleInputChange('brojOkvirnogSporazuma', e.target.value)}
                                         className="w-full px-4 py-3 bg-gray-900/80 border border-gray-700 rounded-xl text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                     />
                                 </div>
@@ -265,26 +273,48 @@ export default function IzlazniDokumenti() {
                         <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
                             <h2 className="text-xl font-semibold text-white mb-4">KUPAC <span className="text-red-400">*</span></h2>
                             <div className="space-y-3">
-                                <div className="flex flex-wrap items-center gap-3">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="kupac" className="w-4 h-4 text-blue-500 focus:ring-blue-500" defaultChecked />
-                                        <span className="text-gray-300 text-sm">Pretraga po: nazivu</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="kupac" className="w-4 h-4 text-blue-500 focus:ring-blue-500" />
-                                        <span className="text-gray-300 text-sm">PIB-u</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="kupac" className="w-4 h-4 text-blue-500 focus:ring-blue-500" />
-                                        <span className="text-gray-300 text-sm">JB(JŠ / matičnom broju</span>
-                                    </label>
+
+                                <div className="relative w-full max-w-sm space-y-3">
+                                    <input
+                                        type="text"
+                                        onChange={ChangeSearch}
+                                        value={searchedText}
+                                        placeholder="PRETRAGA PO PIBU ILI NAZIVU FIRME"
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    />
+                                    <div className="relative">
+                                        <select
+                                            value={searchedText}
+                                            onChange={e => setText(e.target.value)}
+                                            className="w-full bg-white text-gray-700 text-sm border border-gray-300 rounded-md pl-3 pr-8 py-2
+                          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                          hover:border-gray-400 shadow-sm appearance-none cursor-pointer"
+                                        >
+                                            {filteredLica.map(l => (
+                                                <option key={l.jmbg} value={l.jmbg}>
+                                                    {l.naziv_firme} {l.jmbg}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <svg
+                                            className="pointer-events-none absolute top-1/2 right-2 transform -translate-y-1/2 h-4 w-4 text-gray-700"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                            stroke="currentColor"
+                                        >
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                    </div>
                                 </div>
-                                <button type="button" className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg hover:scale-105 transition-all">
-                                    Dodaj kontakt
-                                </button>
                             </div>
                         </div>
                     </div>
+
+
+
+
+
 
                     {/* PDV Osnov */}
                     <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6">
@@ -516,7 +546,7 @@ export default function IzlazniDokumenti() {
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }
