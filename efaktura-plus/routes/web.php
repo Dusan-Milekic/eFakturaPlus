@@ -6,6 +6,7 @@ use Laravel\Fortify\Features;
 use App\Http\Controllers\PravnoLiceController;
 use App\Http\Controllers\DatabaseController;
 use App\Http\Controllers\FakturaController;
+use App\Models\Faktura;
 use App\Models\PravnoLice;
 use App\Models\Stavka;
 
@@ -27,6 +28,9 @@ Route::get('/dashboardMeni', function () {
     return Inertia::render('dashboardMeni');
 })->name('dashboardMeni');
 
+Route::get("/nacrti-prikaz", function () {
+    return Inertia::render("NacrtiPrikaz");
+});
 
 //Ruta za dobijanje svih korisnika na aplikaciji
 Route::get('/pravna-lica/getAll', [PravnoLiceController::class, 'KorsiniciInfoAll']);
@@ -34,6 +38,7 @@ Route::get('/pravna-lica/getAll', [PravnoLiceController::class, 'KorsiniciInfoAl
 // Ruta za slanje dokumenta
 Route::post('/posaljiDokument', [FakturaController::class, 'PosaljiFakturu']);
 
+Route::post("/vratiFakture", [FakturaController::class, "VratiFakture"]);
 
 // Ruta za registraciju kontakt osobe
 Route::get('/registracija', function () {
