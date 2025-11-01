@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, Download, Search, Filter } from 'lucide-react';
+import { FileText, Upload, Download, Search, Filter, X, Eye, ChevronLeft } from 'lucide-react';
+import preuzmiPDF from './NacrtiPrikazPDF';
 
 interface Dokument {
     id: number;
@@ -32,7 +33,7 @@ interface UserData {
 
 // API Response tipovi
 interface PravnoLice {
-    naziv: string; // naziv_firme ili ime + prezime
+    naziv: string;
     pib: string | null;
     jmbg: string;
 }
@@ -45,7 +46,7 @@ interface FakturaApiResponse {
     BrojUgovora: string | null;
     DatumPrometa: string;
     DatumDospeca: string | null;
-    ObavezaPDV: number; // 0 ili 1
+    ObavezaPDV: number;
     created_at: string;
     updated_at: string;
     prodavac: PravnoLice;
@@ -69,6 +70,16 @@ interface ApiResponse {
     statistika?: StatistikaApiResponse;
 }
 
+// Tip za detaljnu fakturu
+interface DetaljiFakture extends FakturaApiResponse {
+    napomena?: string;
+    napomena_interna?: string;
+    mesto_izdavanja?: string;
+    rok_placanja_dani?: number;
+    popust_procenat?: number;
+    popust_iznos?: number;
+}
+
 export default function NacrtiPrikaz() {
     const [dokumenti, setDokumenti] = useState<Dokument[]>([]);
     const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
@@ -86,6 +97,11 @@ export default function NacrtiPrikaz() {
     const [datumOd, setDatumOd] = useState<string>('2022-01-01');
     const [datumDo, setDatumDo] = useState<string>('2025-11-01');
 
+    // Detaljni prikaz fakture
+    const [odabranaFaktura, setOdabranaFaktura] = useState<DetaljiFakture | null>(null);
+    const [prikaziDetalje, setPrikaziDetalje] = useState<boolean>(false);
+    const [ucitavanjeDetalja, setUcitavanjeDetalja] = useState<boolean>(false);
+
     // Učitaj fakture sa servera
     useEffect(() => {
         ucitajFakture();
@@ -96,7 +112,6 @@ export default function NacrtiPrikaz() {
             setLoading(true);
             setError(null);
 
-            // Uzmi userData iz localStorage
             const userDataString = localStorage.getItem('userData');
 
             if (!userDataString) {
@@ -107,19 +122,15 @@ export default function NacrtiPrikaz() {
 
             const userData: UserData = JSON.parse(userDataString);
 
-            // Proveri da li postoji PIB
             if (!userData.pib) {
                 setError('PIB nije pronađen');
                 setLoading(false);
                 return;
             }
 
-            // Uzmi CSRF token ako postoji
             const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
             const csrfToken = csrfTokenElement?.getAttribute('content');
 
-            // API poziv ka serveru - šalji PIB u query parametrima
-            // POST request sa userData u body-u
             const response = await fetch(
                 "/vratiFakture",
                 {
@@ -130,7 +141,7 @@ export default function NacrtiPrikaz() {
                         ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
                     },
                     credentials: 'include',
-                    body: JSON.stringify(userData) // Šalje ceo userData objekat
+                    body: JSON.stringify(userData)
                 }
             );
 
@@ -142,13 +153,12 @@ export default function NacrtiPrikaz() {
             const result: ApiResponse = await response.json();
 
             if (result.success) {
-                // Mapuj podatke sa servera u format za prikaz
                 const mapovaniFakture: Dokument[] = result.data.map((faktura: FakturaApiResponse) => {
                     return {
                         id: faktura.id,
                         brojDokumenta: faktura.BrojDokumenta.toString(),
                         tipDokumenta: faktura.TipDokumenta,
-                        status: 'Poslato', // Možeš dodati status kolonu u bazu kasnije
+                        status: 'Poslato',
                         iznos: `${formatBroj(faktura.ukupno_sa_pdv)} ${faktura.ListaValuta}`,
                         datumPrometa: formatDatum(faktura.DatumPrometa),
                         datumSlanja: formatDatum(faktura.created_at),
@@ -161,7 +171,6 @@ export default function NacrtiPrikaz() {
 
                 setDokumenti(mapovaniFakture);
 
-                // Postavi statistiku ako postoji
                 if (result.statistika) {
                     setStatistika({
                         ukupnoFaktura: result.statistika.ukupno_faktura || 0,
@@ -179,6 +188,59 @@ export default function NacrtiPrikaz() {
             setError(err instanceof Error ? err.message : 'Nepoznata greška');
         } finally {
             setLoading(false);
+        }
+    };
+
+    // Učitaj detalje pojedinačne fakture
+    const ucitajDetaljeFakture = async (fakturaId: number): Promise<void> => {
+        try {
+            setUcitavanjeDetalja(true);
+            setError(null);
+
+            const userDataString = localStorage.getItem('userData');
+            if (!userDataString) {
+                setError('Korisnik nije prijavljen');
+                return;
+            }
+
+            const userData: UserData = JSON.parse(userDataString);
+            const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
+            const csrfToken = csrfTokenElement?.getAttribute('content');
+
+            // API poziv za detalje fakture - prilagodi URL-u tvog backend-a
+            const response = await fetch(
+                `/vratiFakturu/${fakturaId}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(userData)
+                }
+            );
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || `HTTP greška! Status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                setOdabranaFaktura(result.data);
+                setPrikaziDetalje(true);
+            } else {
+                setError(result.message || 'Greška pri učitavanju detalja fakture');
+            }
+
+        } catch (err) {
+            console.error('Greška pri učitavanju detalja:', err);
+            setError(err instanceof Error ? err.message : 'Nepoznata greška');
+        } finally {
+            setUcitavanjeDetalja(false);
         }
     };
 
@@ -209,6 +271,19 @@ export default function NacrtiPrikaz() {
         } else {
             setSelectedDocs(dokumenti.map(d => d.id));
         }
+    };
+
+    const handleRowClick = (dokument: Dokument, e: React.MouseEvent): void => {
+        // Spreči otvaranje detalja kada se klikne checkbox
+        if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
+            return;
+        }
+        ucitajDetaljeFakture(dokument.id);
+    };
+
+    const zatvoriDetalje = (): void => {
+        setPrikaziDetalje(false);
+        setOdabranaFaktura(null);
     };
 
     return (
@@ -245,7 +320,7 @@ export default function NacrtiPrikaz() {
             )}
 
             {/* Main Content - Show only when not loading */}
-            {!loading && (
+            {!loading && !prikaziDetalje && (
                 <>
                     {/* Header */}
                     <div className="mb-8">
@@ -396,7 +471,7 @@ export default function NacrtiPrikaz() {
                                         key={dokument.id}
                                         className={`grid grid-cols-12 gap-4 p-5 hover:bg-slate-700/20 transition-colors cursor-pointer ${selectedDocs.includes(dokument.id) ? 'bg-blue-500/10' : ''
                                             }`}
-                                        onClick={() => toggleSelect(dokument.id)}
+                                        onClick={(e) => handleRowClick(dokument, e)}
                                     >
                                         <div className="col-span-1 flex items-center">
                                             <input
@@ -442,6 +517,213 @@ export default function NacrtiPrikaz() {
                         )}
                     </div>
                 </>
+            )}
+
+            {/* Detaljni prikaz fakture */}
+            {prikaziDetalje && odabranaFaktura && (
+                <div className=" bg-black/60 backdrop-blur-sm z-50 flex items-start justify-center overflow-y-auto p-6">
+                    <div className="w-full max-w-7xl my-6">
+                        {/* Header sa dugmetom za zatvaranje */}
+                        <div className="bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-xl rounded-t-2xl p-6 border border-slate-700/50 border-b-0 flex items-center justify-between sticky top-6 z-10">
+                            <div className="flex items-center gap-4">
+                                <button
+                                    onClick={zatvoriDetalje}
+                                    className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                                >
+                                    <ChevronLeft className="text-slate-300" size={24} />
+                                </button>
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white">
+                                        Faktura #{odabranaFaktura.BrojDokumenta}
+                                    </h2>
+                                    <p className="text-slate-400 text-sm mt-1">
+                                        {odabranaFaktura.TipDokumenta} • {formatDatum(odabranaFaktura.DatumPrometa)}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={zatvoriDetalje}
+                                className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors"
+                            >
+                                <X className="text-slate-300" size={24} />
+                            </button>
+                        </div>
+
+                        {/* Glavni sadržaj - Grid layout */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-xl rounded-b-2xl p-6 border border-slate-700/50">
+
+                            {/* Leva strana - Detalji fakture */}
+                            <div className="space-y-6">
+                                {/* Osnovne informacije */}
+                                <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                        <FileText className="text-blue-400" size={20} />
+                                        Osnovne informacije
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Broj dokumenta</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.BrojDokumenta}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Tip dokumenta</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.TipDokumenta}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Valuta</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.ListaValuta}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Broj ugovora</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.BrojUgovora || '-'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Datum prometa</p>
+                                            <p className="text-white font-medium">{formatDatum(odabranaFaktura.DatumPrometa)}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Datum dospeća</p>
+                                            <p className="text-white font-medium">
+                                                {odabranaFaktura.DatumDospeca ? formatDatum(odabranaFaktura.DatumDospeca) : '-'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Obaveza PDV</p>
+                                            <p className="text-white font-medium">
+                                                {odabranaFaktura.ObavezaPDV ? 'Da' : 'Ne'}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Kreirano</p>
+                                            <p className="text-white font-medium">{formatDatum(odabranaFaktura.created_at)}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Prodavac */}
+                                <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                        <FileText className="text-emerald-400" size={20} />
+                                        Prodavac
+                                    </h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Naziv</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.naziv}</p>
+                                        </div>
+                                        {odabranaFaktura.prodavac.pib && (
+                                            <div>
+                                                <p className="text-slate-400 text-sm mb-1">PIB</p>
+                                                <p className="text-white font-medium">{odabranaFaktura.prodavac.pib}</p>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">JMBG</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.jmbg}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Kupac */}
+                                <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                    <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                        <FileText className="text-purple-400" size={20} />
+                                        Kupac
+                                    </h3>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Naziv</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.naziv}</p>
+                                        </div>
+                                        {odabranaFaktura.kupac.pib && (
+                                            <div>
+                                                <p className="text-slate-400 text-sm mb-1">PIB</p>
+                                                <p className="text-white font-medium">{odabranaFaktura.kupac.pib}</p>
+                                            </div>
+                                        )}
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">JMBG</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.jmbg}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Finansijski podaci */}
+                                <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-5 border border-blue-500/30">
+                                    <h3 className="text-lg font-semibold text-white mb-4">Finansijski pregled</h3>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-center pb-3 border-b border-slate-700/50">
+                                            <span className="text-slate-300">Iznos bez PDV</span>
+                                            <span className="text-white font-semibold text-lg">
+                                                {formatBroj(odabranaFaktura.ukupno_bez_pdv)} {odabranaFaktura.ListaValuta}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center pb-3 border-b border-slate-700/50">
+                                            <span className="text-slate-300">PDV</span>
+                                            <span className="text-white font-semibold text-lg">
+                                                {formatBroj(odabranaFaktura.ukupan_pdv)} {odabranaFaktura.ListaValuta}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-2">
+                                            <span className="text-white font-semibold text-lg">Ukupno sa PDV</span>
+                                            <span className="text-blue-400 font-bold text-2xl">
+                                                {formatBroj(odabranaFaktura.ukupno_sa_pdv)} {odabranaFaktura.ListaValuta}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Akcije */}
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => preuzmiPDF(odabranaFaktura.id)}
+                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
+                                    >
+                                        <Download size={18} />
+                                        Preuzmi PDF
+                                    </button>
+                                    <button
+                                        onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
+                                    >
+                                        <Eye size={18} />
+                                        Pregledaj PDF
+                                    </button>
+                                </div>
+                            </div>
+
+
+                            {/* Desna strana - PDF Viewer */}
+                            <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden lg:sticky lg:top-24 lg:self-start">
+                                <div className="bg-slate-800/50 p-4 border-b border-slate-700/50">
+                                    <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                        <Eye className="text-cyan-400" size={20} />
+                                        PDF pregled
+                                    </h3>
+                                </div>
+                                <div className="p-0 h-[600px] bg-slate-900">
+                                    <iframe
+                                        src={`/generisiPDF/${odabranaFaktura.id}`}
+                                        className="w-full h-full border-0"
+                                        title="PDF Preview"
+                                    />
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Loading overlay za detalje */}
+            {ucitavanjeDetalja && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-4"></div>
+                        <p className="text-white text-lg">Učitavanje detalja fakture...</p>
+                    </div>
+                </div>
             )}
         </div>
     );

@@ -6,13 +6,393 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use App\Models\Faktura;
+use Illuminate\Support\Facades\Storage;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class FakturaController extends Controller
 {
+    public function generisiPDF($id, Request $request)
+    {
+        try {
+            // Uzmi fakturu sa svim relacionim podacima
+            $faktura = Faktura::with(['prodavac', 'kupac'])->find($id);
+
+            if (!$faktura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Faktura nije pronađena'
+                ], 404);
+            }
+
+            // Učitaj stavke
+            $stavke = DB::table('stavka')
+                ->where('FakturaFK', $faktura->id)
+                ->get();
+
+            // Izračunaj ukupne iznose
+            $ukupnoBezPDV = 0;
+            $ukupanPDV = 0;
+            $stavkeData = [];
+
+            foreach ($stavke as $stavka) {
+                $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - ($stavka->Umanjenje ?? 0);
+                $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+
+                $ukupnoBezPDV += $iznosBezPDV;
+                $ukupanPDV += $pdvIznos;
+
+                $stavkeData[] = [
+                    'sifra' => $stavka->Sifra ?? '-',
+                    'naziv' => $stavka->Naziv,
+                    'kolicina' => $stavka->Kolicina,
+                    'jedinica_mere' => $stavka->JedinicaMere,
+                    'cena' => number_format($stavka->Cena, 2, ',', '.'),
+                    'umanjenje' => number_format($stavka->Umanjenje ?? 0, 2, ',', '.'),
+                    'iznos_bez_pdv' => number_format($iznosBezPDV, 2, ',', '.'),
+                    'pdv_procenat' => $stavka->PDV,
+                    'pdv_iznos' => number_format($pdvIznos, 2, ',', '.'),
+                    'ukupno' => number_format($iznosBezPDV + $pdvIznos, 2, ',', '.')
+                ];
+            }
+
+            $ukupnoSaPDV = $ukupnoBezPDV + $ukupanPDV;
+
+            // Pripremi naziv prodavca
+            $prodavacNaziv = 'N/A';
+            if ($faktura->prodavac) {
+                if (!empty($faktura->prodavac->naziv_firme)) {
+                    $prodavacNaziv = $faktura->prodavac->naziv_firme;
+                } elseif (!empty($faktura->prodavac->ime) && !empty($faktura->prodavac->prezime)) {
+                    $prodavacNaziv = trim($faktura->prodavac->ime . ' ' . $faktura->prodavac->prezime);
+                }
+            }
+
+            // Pripremi naziv kupca
+            $kupacNaziv = 'N/A';
+            if ($faktura->kupac) {
+                if (!empty($faktura->kupac->naziv_firme)) {
+                    $kupacNaziv = $faktura->kupac->naziv_firme;
+                } elseif (!empty($faktura->kupac->ime) && !empty($faktura->kupac->prezime)) {
+                    $kupacNaziv = trim($faktura->kupac->ime . ' ' . $faktura->kupac->prezime);
+                }
+            }
+
+            // Grupiši stavke po PDV stopi
+            $pdvGrupe = [];
+            foreach ($stavke as $stavka) {
+                $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - ($stavka->Umanjenje ?? 0);
+                $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+                $stopa = $stavka->PDV;
+
+                if (!isset($pdvGrupe[$stopa])) {
+                    $pdvGrupe[$stopa] = [
+                        'stopa' => $stopa,
+                        'osnovica' => 0,
+                        'pdv' => 0
+                    ];
+                }
+
+                $pdvGrupe[$stopa]['osnovica'] += $iznosBezPDV;
+                $pdvGrupe[$stopa]['pdv'] += $pdvIznos;
+            }
+
+            // Konvertuj u niz i formatiraj brojeve
+            $pdvGrupeFormatted = array_map(function ($grupa) {
+                return [
+                    'stopa' => $grupa['stopa'] . '%',
+                    'osnovica' => number_format($grupa['osnovica'], 2, ',', '.'),
+                    'pdv' => number_format($grupa['pdv'], 2, ',', '.')
+                ];
+            }, array_values($pdvGrupe));
+
+            // Pripremi podatke za PDF
+            $data = [
+                'faktura' => [
+                    'broj_dokumenta' => $faktura->BrojDokumenta,
+                    'tip_dokumenta' => $faktura->TipDokumenta,
+                    'broj_ugovora' => $faktura->BrojUgovora ?? '-',
+                    'datum_prometa' => date('d.m.Y', strtotime($faktura->DatumPrometa)),
+                    'datum_dospeca' => $faktura->DatumDospeca ? date('d.m.Y', strtotime($faktura->DatumDospeca)) : '-',
+                    'datum_izdavanja' => date('d.m.Y', strtotime($faktura->created_at)),
+                    'valuta' => $faktura->ListaValuta,
+                    'obaveza_pdv' => $faktura->ObavezaPDV ? 'Da' : 'Ne',
+                    'mesto_izdavanja' => 'Beograd'
+                ],
+                'prodavac' => [
+                    'naziv' => $prodavacNaziv,
+                    'pib' => $faktura->prodavac->pib ?? '-',
+                    'jmbg' => $faktura->prodavac->jmbg ?? '-',
+                    'adresa' => $faktura->prodavac->adresa ?? '-',
+                    'grad' => $faktura->prodavac->grad ?? '-',
+                    'telefon' => $faktura->prodavac->telefon ?? '-',
+                    'email' => $faktura->prodavac->email ?? '-',
+                ],
+                'kupac' => [
+                    'naziv' => $kupacNaziv,
+                    'pib' => $faktura->kupac->pib ?? '-',
+                    'jmbg' => $faktura->kupac->jmbg ?? '-',
+                    'adresa' => $faktura->kupac->adresa ?? '-',
+                    'grad' => $faktura->kupac->grad ?? '-',
+                    'telefon' => $faktura->kupac->telefon ?? '-',
+                    'email' => $faktura->kupac->email ?? '-',
+                ],
+                'stavke' => $stavkeData,
+                'pdv_grupe' => $pdvGrupeFormatted,
+                'ukupno' => [
+                    'bez_pdv' => number_format($ukupnoBezPDV, 2, ',', '.'),
+                    'pdv' => number_format($ukupanPDV, 2, ',', '.'),
+                    'sa_pdv' => number_format($ukupnoSaPDV, 2, ',', '.'),
+                ]
+            ];
+
+            // Generiši PDF
+            $pdf = Pdf::loadView('pdf.faktura', $data)
+                ->setPaper('a4', 'portrait')
+                ->setOptions([
+                    'isHtml5ParserEnabled' => true,
+                    'isRemoteEnabled' => true,
+                    'defaultFont' => 'DejaVu Sans',
+                ]);
+
+            $fileName = 'Faktura_' . $faktura->BrojDokumenta . '_' . date('Y-m-d') . '.pdf';
+
+            // Vrati PDF kao stream (otvori u browser-u)
+            return $pdf->stream($fileName);
+
+        } catch (\Exception $e) {
+            Log::error('Greška pri generisanju PDF-a', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Došlo je do greške pri generisanju PDF-a',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function sacuvajPDF($id, Request $request)
+    {
+        try {
+            $faktura = Faktura::with(['prodavac', 'kupac'])->find($id);
+
+            if (!$faktura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Faktura nije pronađena'
+                ], 404);
+            }
+
+            // Učitaj stavke
+            $stavke = DB::table('stavka')
+                ->where('FakturaFK', $faktura->id)
+                ->get();
+
+            // Izračunaj ukupne iznose
+            $ukupnoBezPDV = 0;
+            $ukupanPDV = 0;
+            $stavkeData = [];
+
+            foreach ($stavke as $stavka) {
+                $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - ($stavka->Umanjenje ?? 0);
+                $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+
+                $ukupnoBezPDV += $iznosBezPDV;
+                $ukupanPDV += $pdvIznos;
+
+                $stavkeData[] = [
+                    'sifra' => $stavka->Sifra ?? '-',
+                    'naziv' => $stavka->Naziv,
+                    'kolicina' => $stavka->Kolicina,
+                    'jedinica_mere' => $stavka->JedinicaMere,
+                    'cena' => number_format($stavka->Cena, 2, ',', '.'),
+                    'umanjenje' => number_format($stavka->Umanjenje ?? 0, 2, ',', '.'),
+                    'iznos_bez_pdv' => number_format($iznosBezPDV, 2, ',', '.'),
+                    'pdv_procenat' => $stavka->PDV,
+                    'pdv_iznos' => number_format($pdvIznos, 2, ',', '.'),
+                    'ukupno' => number_format($iznosBezPDV + $pdvIznos, 2, ',', '.')
+                ];
+            }
+
+            $ukupnoSaPDV = $ukupnoBezPDV + $ukupanPDV;
+
+            // Pripremi naziv prodavca
+            $prodavacNaziv = 'N/A';
+            if ($faktura->prodavac) {
+                if (!empty($faktura->prodavac->naziv_firme)) {
+                    $prodavacNaziv = $faktura->prodavac->naziv_firme;
+                } elseif (!empty($faktura->prodavac->ime) && !empty($faktura->prodavac->prezime)) {
+                    $prodavacNaziv = trim($faktura->prodavac->ime . ' ' . $faktura->prodavac->prezime);
+                }
+            }
+
+            // Pripremi naziv kupca
+            $kupacNaziv = 'N/A';
+            if ($faktura->kupac) {
+                if (!empty($faktura->kupac->naziv_firme)) {
+                    $kupacNaziv = $faktura->kupac->naziv_firme;
+                } elseif (!empty($faktura->kupac->ime) && !empty($faktura->kupac->prezime)) {
+                    $kupacNaziv = trim($faktura->kupac->ime . ' ' . $faktura->kupac->prezime);
+                }
+            }
+
+            // Grupiši stavke po PDV stopi
+            $pdvGrupe = [];
+            foreach ($stavke as $stavka) {
+                $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - ($stavka->Umanjenje ?? 0);
+                $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+                $stopa = $stavka->PDV;
+
+                if (!isset($pdvGrupe[$stopa])) {
+                    $pdvGrupe[$stopa] = [
+                        'stopa' => $stopa,
+                        'osnovica' => 0,
+                        'pdv' => 0
+                    ];
+                }
+
+                $pdvGrupe[$stopa]['osnovica'] += $iznosBezPDV;
+                $pdvGrupe[$stopa]['pdv'] += $pdvIznos;
+            }
+
+            // Konvertuj u niz i formatiraj brojeve
+            $pdvGrupeFormatted = array_map(function ($grupa) {
+                return [
+                    'stopa' => $grupa['stopa'] . '%',
+                    'osnovica' => number_format($grupa['osnovica'], 2, ',', '.'),
+                    'pdv' => number_format($grupa['pdv'], 2, ',', '.')
+                ];
+            }, array_values($pdvGrupe));
+
+            // Pripremi podatke za PDF
+            $data = [
+                'faktura' => [
+                    'broj_dokumenta' => $faktura->BrojDokumenta,
+                    'tip_dokumenta' => $faktura->TipDokumenta,
+                    'broj_ugovora' => $faktura->BrojUgovora ?? '-',
+                    'datum_prometa' => date('d.m.Y', strtotime($faktura->DatumPrometa)),
+                    'datum_dospeca' => $faktura->DatumDospeca ? date('d.m.Y', strtotime($faktura->DatumDospeca)) : '-',
+                    'datum_izdavanja' => date('d.m.Y', strtotime($faktura->created_at)),
+                    'valuta' => $faktura->ListaValuta,
+                    'obaveza_pdv' => $faktura->ObavezaPDV ? 'Da' : 'Ne',
+                    'mesto_izdavanja' => 'Beograd'
+                ],
+                'prodavac' => [
+                    'naziv' => $prodavacNaziv,
+                    'pib' => $faktura->prodavac->pib ?? '-',
+                    'jmbg' => $faktura->prodavac->jmbg ?? '-',
+                    'adresa' => $faktura->prodavac->adresa ?? '-',
+                    'grad' => $faktura->prodavac->grad ?? '-',
+                    'telefon' => $faktura->prodavac->telefon ?? '-',
+                    'email' => $faktura->prodavac->email ?? '-',
+                ],
+                'kupac' => [
+                    'naziv' => $kupacNaziv,
+                    'pib' => $faktura->kupac->pib ?? '-',
+                    'jmbg' => $faktura->kupac->jmbg ?? '-',
+                    'adresa' => $faktura->kupac->adresa ?? '-',
+                    'grad' => $faktura->kupac->grad ?? '-',
+                    'telefon' => $faktura->kupac->telefon ?? '-',
+                    'email' => $faktura->kupac->email ?? '-',
+                ],
+                'stavke' => $stavkeData,
+                'pdv_grupe' => $pdvGrupeFormatted,
+                'ukupno' => [
+                    'bez_pdv' => number_format($ukupnoBezPDV, 2, ',', '.'),
+                    'pdv' => number_format($ukupanPDV, 2, ',', '.'),
+                    'sa_pdv' => number_format($ukupnoSaPDV, 2, ',', '.'),
+                ]
+            ];
+
+            // Generiši PDF
+            $pdf = Pdf::loadView('pdf.faktura', $data)
+                ->setPaper('a4', 'portrait');
+
+            // Sačuvaj PDF u storage
+            $fileName = 'faktura_' . $faktura->id . '_' . time() . '.pdf';
+            $path = 'pdfs/' . $fileName;
+
+            Storage::put('public/' . $path, $pdf->output());
+
+            // Ažuriraj fakturu sa putanjom do PDF-a (opciono)
+            // DB::table('faktura')
+            //     ->where('id', $faktura->id)
+            //     ->update([
+            //         'pdf_path' => $path,
+            //         'pdf_generated_at' => now()
+            //     ]);
+
+            $url = asset('storage/' . $path);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PDF uspešno generisan',
+                'data' => [
+                    'url' => $url,
+                    'filename' => $fileName,
+                    'path' => $path
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Greška pri čuvanju PDF-a', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Došlo je do greške pri čuvanju PDF-a',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    public function vratiFakturu($id, Request $request)
+    {
+        $faktura = Faktura::with(['prodavac', 'kupac'])->find($id);
+
+        if (!$faktura) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Faktura nije pronađena'
+            ], 404);
+        }
+
+        // Transformiši podatke
+        $data = $faktura->toArray();
+
+        // Dodaj naziv za prodavca
+        if ($faktura->prodavac) {
+            $data['prodavac']['naziv'] = $faktura->prodavac->naziv_firme
+                ?? ($faktura->prodavac->ime . ' ' . $faktura->prodavac->prezime)
+                ?? 'N/A';
+        }
+
+        // Dodaj naziv za kupca
+        if ($faktura->kupac) {
+            $data['kupac']['naziv'] = $faktura->kupac->naziv_firme
+                ?? ($faktura->kupac->ime . ' ' . $faktura->kupac->prezime)
+                ?? 'N/A';
+        }
+
+        // Dodaj finansijske podatke
+        $data['ukupno_bez_pdv'] = $faktura->UkupnoBezPDV ?? 0;
+        $data['ukupan_pdv'] = $faktura->UkupanPDV ?? 0;
+        $data['ukupno_sa_pdv'] = $faktura->UkupnoSaPDV ?? 0;
+
+        return response()->json([
+            'success' => true,
+            'data' => $data
+        ]);
+    }
+
     public function VratiFakture(Request $request)
     {
         try {
-            // Uzmi PIB iz request body-a
             $pib = $request->input("pib");
 
             if (!$pib) {
@@ -23,7 +403,6 @@ class FakturaController extends Controller
                 ], 400);
             }
 
-            // Pronađi pravno lice po PIB-u
             $pravnoLice = DB::table('pravno_lice')
                 ->where('pib', $pib)
                 ->first();
@@ -37,7 +416,6 @@ class FakturaController extends Controller
 
             Log::info('Pronađeno pravno lice', ['id' => $pravnoLice->id, 'pib' => $pib]);
 
-            // Validacija opcionalnih filtera
             $validator = Validator::make($request->all(), [
                 'datum_od' => 'nullable|date',
                 'datum_do' => 'nullable|date|after_or_equal:datum_od',
@@ -54,12 +432,10 @@ class FakturaController extends Controller
                 ], 422);
             }
 
-            // Početni query - fakture gde je firma prodavac
-            // BITNO: Eksplicitno navedi BrojDokumenta u SELECT!
             $query = DB::table('faktura')
                 ->select(
                     'faktura.id',
-                    'faktura.BrojDokumenta',  // EKSPLICITNO!
+                    'faktura.BrojDokumenta',
                     'faktura.ListaValuta',
                     'faktura.TipDokumenta',
                     'faktura.BrojUgovora',
@@ -82,7 +458,6 @@ class FakturaController extends Controller
                 ->join('pravno_lice as kupac', 'faktura.KupacFK', '=', 'kupac.id')
                 ->where('prodavac.id', $pravnoLice->id);
 
-            // Primeni filtere ako postoje
             if ($request->has('datum_od')) {
                 $query->where('faktura.DatumPrometa', '>=', $request->input('datum_od'));
             }
@@ -99,16 +474,13 @@ class FakturaController extends Controller
                 $query->where('faktura.TipDokumenta', $request->input('tip_dokumenta'));
             }
 
-            // Sortiraj po datumu kreiranja (najnovije prvo)
             $query->orderBy('faktura.created_at', 'desc');
 
-            // Paginacija
             $perPage = $request->input('per_page', 15);
             $fakture = $query->paginate($perPage);
 
             Log::info('Pronađeno faktura', ['count' => $fakture->total()]);
 
-            // Ako nema faktura, vrati prazan odgovor
             if ($fakture->total() === 0) {
                 return response()->json([
                     'success' => true,
@@ -129,20 +501,11 @@ class FakturaController extends Controller
                 ], 200);
             }
 
-            // Za svaku fakturu učitaj stavke
             $faktureData = $fakture->map(function ($faktura) {
-                // DEBUG: Loguj šta vraća baza
-                Log::info('Faktura iz baze', [
-                    'id' => $faktura->id,
-                    'BrojDokumenta' => $faktura->BrojDokumenta,
-                    'BrojDokumenta_type' => gettype($faktura->BrojDokumenta)
-                ]);
-
                 $stavke = DB::table('stavka')
                     ->where('FakturaFK', $faktura->id)
                     ->get();
 
-                // Izračunaj ukupne iznose
                 $ukupnoBezPDV = 0;
                 $ukupanPDV = 0;
 
@@ -154,7 +517,6 @@ class FakturaController extends Controller
                     $ukupanPDV += $pdvIznos;
                 }
 
-                // Pripremi naziv prodavca i kupca
                 $prodavacNaziv = $faktura->prodavac_naziv ?:
                     trim($faktura->prodavac_ime . ' ' . $faktura->prodavac_prezime);
 
@@ -163,10 +525,10 @@ class FakturaController extends Controller
 
                 return [
                     'id' => $faktura->id,
-                    'BrojDokumenta' => $faktura->BrojDokumenta, // EKSPLICITNO VRATI!
+                    'BrojDokumenta' => $faktura->BrojDokumenta,
                     'lista_valuta' => $faktura->ListaValuta,
                     'tip_dokumenta' => $faktura->TipDokumenta,
-                    'broj_dokumenta' => $faktura->BrojDokumenta, // I u snake_case za kompatibilnost
+                    'broj_dokumenta' => $faktura->BrojDokumenta,
                     'broj_ugovora' => $faktura->BrojUgovora,
                     'prodavac' => [
                         'naziv' => $prodavacNaziv,
@@ -179,7 +541,7 @@ class FakturaController extends Controller
                     ],
                     'DatumPrometa' => $faktura->DatumPrometa,
                     'DatumDospeca' => $faktura->DatumDospeca,
-                    'datum_prometa' => $faktura->DatumPrometa, // I snake_case
+                    'datum_prometa' => $faktura->DatumPrometa,
                     'datum_dospeca' => $faktura->DatumDospeca,
                     'ObavezaPDV' => $faktura->ObavezaPDV,
                     'pdv_obaveza' => $faktura->ObavezaPDV == 1 ? 'obracunava' : 'neObracunava',
@@ -213,7 +575,6 @@ class FakturaController extends Controller
                 ];
             });
 
-            // Izračunaj statistike
             $statistika = [
                 'ukupno_faktura' => $fakture->total(),
                 'ukupan_iznos_bez_pdv' => $faktureData->sum('ukupno_bez_pdv'),
@@ -251,7 +612,6 @@ class FakturaController extends Controller
     public function PosaljiFakturu(Request $request)
     {
         try {
-            // Validacija ulaznih podataka
             $validator = Validator::make($request->all(), [
                 'listaValuta' => 'required|string|in:RSD,EUR,USD',
                 'tipDokumenta' => 'required|string',
@@ -281,10 +641,8 @@ class FakturaController extends Controller
                 ], 422);
             }
 
-            // Započni transakciju
             DB::beginTransaction();
 
-            // Pronađi prodavca i kupca po PIB/JMBG
             $prodavac = DB::table('pravno_lice')->where('pib', $request->prodavacPib)->first();
             $kupac = DB::table('pravno_lice')->where('jmbg', $request->kupacJmbg)->first();
 
@@ -302,7 +660,6 @@ class FakturaController extends Controller
                 ], 404);
             }
 
-            // Izračunaj ukupne iznose
             $ukupnoBezPDV = 0;
             $ukupanPDV = 0;
 
@@ -316,7 +673,6 @@ class FakturaController extends Controller
 
             $ukupnoSaPDV = $ukupnoBezPDV + $ukupanPDV;
 
-            // Snimi fakturu u bazu (prilagođeno tvojoj strukturi)
             $fakturaId = DB::table('faktura')->insertGetId([
                 'ListaValuta' => $request->listaValuta,
                 'TipDokumenta' => $request->tipDokumenta,
@@ -331,7 +687,6 @@ class FakturaController extends Controller
                 'updated_at' => now(),
             ]);
 
-            // Snimi stavke fakture (prilagođeno tvojoj strukturi)
             foreach ($request->stavke as $stavka) {
                 DB::table('stavka')->insert([
                     'FakturaFK' => $fakturaId,
@@ -348,10 +703,8 @@ class FakturaController extends Controller
                 ]);
             }
 
-            // Potvrdi transakciju
             DB::commit();
 
-            // Loguj uspešnu operaciju
             Log::info('Faktura uspešno poslata', [
                 'faktura_id' => $fakturaId,
                 'broj_dokumenta' => $request->brojDokumenta
@@ -370,10 +723,8 @@ class FakturaController extends Controller
             ], 201);
 
         } catch (\Exception $e) {
-            // Rollback transakcije u slučaju greške
             DB::rollBack();
 
-            // Loguj grešku
             Log::error('Greška pri slanju fakture', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()

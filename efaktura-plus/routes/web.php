@@ -32,6 +32,10 @@ Route::get("/nacrti-prikaz", function () {
     return Inertia::render("NacrtiPrikaz");
 });
 
+
+
+Route::match(['get', 'post'], '/generisiPDF/{id}', [FakturaController::class, 'generisiPDF'])->name('generisiPDF');
+Route::post('/sacuvajPDF/{id}', [FakturaController::class, 'sacuvajPDF'])->name('sacuvajPDF');
 //Ruta za dobijanje svih korisnika na aplikaciji
 Route::get('/pravna-lica/getAll', [PravnoLiceController::class, 'KorsiniciInfoAll']);
 
@@ -39,6 +43,7 @@ Route::get('/pravna-lica/getAll', [PravnoLiceController::class, 'KorsiniciInfoAl
 Route::post('/posaljiDokument', [FakturaController::class, 'PosaljiFakturu']);
 
 Route::post("/vratiFakture", [FakturaController::class, "VratiFakture"]);
+Route::post('/vratiFakturu/{id}', [FakturaController::class, 'vratiFakturu']);
 
 // Ruta za registraciju kontakt osobe
 Route::get('/registracija', function () {
