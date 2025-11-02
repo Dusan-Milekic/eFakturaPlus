@@ -74,12 +74,34 @@ class DatabaseController extends Controller
         return redirect()->back()->with('success', 'Nalog je uspešno deaktiviran.');
     }
 
-    public function obrisiNalog($id)
+    public function obrisiNalog($name, $id)  // ✅ Prvo $name, pa $id
     {
-        DB::table('pravno_lice')
-            ->where('id', $id)
-            ->delete();
+        // Validacija - dozvoli samo određene tabele (sigurnost!)
+        $dozvoljeneTabe = [
+            'pravno_lice',
+            'faktura',
+            'status',
+            'kupac',
+            'prodavac',
+        ];
 
-        return redirect()->back()->with('success', 'Nalog je uspešno obrisan.');
+        if (!in_array($name, $dozvoljeneTabe)) {
+            return redirect()->back()->with('error', 'Nevalidna tabela.');
+        }
+
+        try {
+            $deleted = DB::table($name)
+                ->where('id', $id)
+                ->delete();
+
+            if ($deleted) {
+                return redirect()->back()->with('success', 'Red je uspešno obrisan.');
+            } else {
+                return redirect()->back()->with('error', 'Red sa tim ID-om ne postoji.');
+            }
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Greška pri brisanju: ' . $e->getMessage());
+        }
     }
+
 }

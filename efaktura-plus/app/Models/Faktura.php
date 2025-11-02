@@ -179,7 +179,10 @@ class Faktura extends Model
     {
         return $query->whereBetween('DatumPrometa', [$od, $do]);
     }
-
+    public function status()
+    {
+        return $this->hasOne(Status::class, 'FakturaFK');
+    }
     /**
      * Boot method - eventi
      */

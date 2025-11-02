@@ -1,0 +1,160 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Status;
+use App\Models\Faktura;
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+
+class StatusController extends Controller
+{
+    /**
+     * Dobij status za traženu fakturu
+     * GET /api/faktura/{fakturaId}/status
+     */
+    public function dobijStatus($fakturaId): JsonResponse
+    {
+        try {
+            // Proveri da li faktura postoji
+            $faktura = Faktura::findOrFail($fakturaId);
+
+            // Dobij status fakture
+            $status = $faktura->status;
+
+            // Ako status ne postoji
+            if (!$status) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Status za ovu fakturu ne postoji'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $status
+            ], 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Faktura sa ID ' . $fakturaId . ' ne postoji'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška pri dobijanju statusa: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Koliko ima faktura po statusu
+     * GET /api/status/statistika
+     */
+    public function kolikoImaFaktura(): JsonResponse
+    {
+        try {
+            // Ukupan broj faktura
+            $ukupnoFaktura = Faktura::count();
+
+            // Fakture grupisane po statusu
+            $fakturePoStatusu = DB::table('faktura')
+                ->leftJoin('status', 'faktura.id', '=', 'status.FakturaFK')
+                ->select('status.status', DB::raw('COUNT(faktura.id) as broj_faktura'))
+                ->groupBy('status.status')
+                ->get();
+
+            // Fakture bez statusa
+            $faktureBezStatusa = Faktura::whereDoesntHave('status')->count();
+
+            // Formatiraj rezultat
+            $statistika = [];
+            foreach ($fakturePoStatusu as $item) {
+                $statistika[$item->status ?? 'Bez statusa'] = $item->broj_faktura;
+            }
+
+            // Dodaj fakture bez statusa ako postoje
+            if ($faktureBezStatusa > 0 && !isset($statistika['Bez statusa'])) {
+                $statistika['Bez statusa'] = $faktureBezStatusa;
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'ukupno_faktura' => $ukupnoFaktura,
+                    'po_statusu' => $statistika
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška pri dobijanju statistike: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Ažuriraj status date fakture
+     * PUT /api/faktura/{fakturaId}/status
+     */
+    public function azurirajStatus(Request $request, $fakturaId): JsonResponse
+    {
+        try {
+            // Validacija
+            $validated = $request->validate([
+                'status' => 'required|string|max:255'
+            ]);
+
+            // Proveri da li faktura postoji
+            $faktura = Faktura::findOrFail($fakturaId);
+
+            // Dobij status fakture
+            $status = $faktura->status;
+
+            // Ako status ne postoji, kreiraj novi
+            if (!$status) {
+                $status = Status::create([
+                    'FakturaFK' => $fakturaId,
+                    'status' => $validated['status']
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Status uspešno kreiran',
+                    'data' => $status
+                ], 201);
+            }
+
+            // Ažuriraj postojeći status
+            $status->update([
+                'status' => $validated['status']
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Status uspešno ažuriran',
+                'data' => $status
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška u validaciji',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Faktura sa ID ' . $fakturaId . ' ne postoji'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška pri ažuriranju statusa: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+}

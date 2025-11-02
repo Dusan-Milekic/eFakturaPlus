@@ -452,10 +452,13 @@ class FakturaController extends Controller
                     'kupac.ime as kupac_ime',
                     'kupac.prezime as kupac_prezime',
                     'kupac.pib as kupac_pib',
-                    'kupac.jmbg as kupac_jmbg'
+                    'kupac.jmbg as kupac_jmbg',
+                    'status.id as status_id',        // ✅ Dodato
+                    'status.status as status_naziv'  // ✅ Dodato
                 )
                 ->join('pravno_lice as prodavac', 'faktura.ProdavacFK', '=', 'prodavac.id')
                 ->join('pravno_lice as kupac', 'faktura.KupacFK', '=', 'kupac.id')
+                ->leftJoin('status', 'faktura.id', '=', 'status.FakturaFK') // ✅ JOIN sa status tabelom
                 ->where('prodavac.id', $pravnoLice->id);
 
             if ($request->has('datum_od')) {
@@ -539,6 +542,11 @@ class FakturaController extends Controller
                         'pib' => $faktura->kupac_pib,
                         'jmbg' => $faktura->kupac_jmbg
                     ],
+                    'status' => $faktura->status_naziv ? [ // ✅ Dodato status objekat
+                        'id' => $faktura->status_id,
+                        'status' => $faktura->status_naziv,
+                        'FakturaFK' => $faktura->id
+                    ] : null,
                     'DatumPrometa' => $faktura->DatumPrometa,
                     'DatumDospeca' => $faktura->DatumDospeca,
                     'datum_prometa' => $faktura->DatumPrometa,
@@ -703,6 +711,14 @@ class FakturaController extends Controller
                 ]);
             }
 
+            // ✅ DODAJ STATUS "primljen" za novu fakturu
+            DB::table('status')->insert([
+                'FakturaFK' => $fakturaId,
+                'status' => 'primljen',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
             DB::commit();
 
             Log::info('Faktura uspešno poslata', [
@@ -718,7 +734,8 @@ class FakturaController extends Controller
                     'broj_dokumenta' => $request->brojDokumenta,
                     'ukupno_bez_pdv' => $ukupnoBezPDV,
                     'ukupan_pdv' => $ukupanPDV,
-                    'ukupno_sa_pdv' => $ukupnoSaPDV
+                    'ukupno_sa_pdv' => $ukupnoSaPDV,
+                    'status' => 'primljen' // ✅ Dodato u response
                 ]
             ], 201);
 

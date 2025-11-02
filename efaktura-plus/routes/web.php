@@ -9,6 +9,7 @@ use App\Http\Controllers\FakturaController;
 use App\Models\Faktura;
 use App\Models\PravnoLice;
 use App\Models\Stavka;
+use App\Http\Controllers\StatusController;
 
 // Ruta za početnu stranicu
 Route::get('/', function () {
@@ -45,6 +46,17 @@ Route::post('/posaljiDokument', [FakturaController::class, 'PosaljiFakturu']);
 Route::post("/vratiFakture", [FakturaController::class, "VratiFakture"]);
 Route::post('/vratiFakturu/{id}', [FakturaController::class, 'vratiFakturu']);
 
+
+//Rutae za statusa
+Route::get('/status/statistika', [StatusController::class, 'kolikoImaFaktura']);
+
+// Dobij status za fakturu
+Route::get('/faktura/{fakturaId}/status', [StatusController::class, 'dobijStatus']);
+
+// Ažuriraj status fakture (kreira ako ne postoji)
+Route::post('/faktura/{fakturaId}/status', [StatusController::class, 'azurirajStatus']);
+
+
 // Ruta za registraciju kontakt osobe
 Route::get('/registracija', function () {
     return Inertia::render('registerContact');
@@ -73,7 +85,9 @@ Route::post('/admin', [DatabaseController::class, 'login'])->name('admin.login.s
 Route::get('/admin/table/{name}', [DatabaseController::class, 'showTable'])->name('admin.table');
 Route::post('/admin/aktiviraj/{jmbg}', [DatabaseController::class, 'aktivirajNalog'])->name('admin.aktiviraj');
 Route::post('/admin/deaktiviraj/{jmbg}', [DatabaseController::class, 'deaktivirajNalog'])->name('admin.deaktiviraj');
-Route::delete('/admin/delete/pravno_lice/{id}', [DatabaseController::class, 'obrisiNalog'])->name('admin.delete');
+// Dinamička ruta koja prima ime tabele i ID
+Route::delete('/admin/delete/{name}/{id}', [DatabaseController::class, 'obrisiNalog'])
+    ->name('admin.delete');
 
 
 

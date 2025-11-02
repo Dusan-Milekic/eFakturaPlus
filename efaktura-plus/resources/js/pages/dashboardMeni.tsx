@@ -44,6 +44,44 @@ export default function DashboardMeni() {
 
     }, []);
 
+
+    // Dodaj state za broj faktura
+    const [brojFaktura, setBrojFaktura] = useState<number>(0);
+
+    // Funkcija za učitavanje statistike
+    const ucitajStatistiku = async (): Promise<void> => {
+        try {
+            const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
+            const csrfToken = csrfTokenElement?.getAttribute('content');
+
+            const response = await fetch('/status/statistika', {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+                },
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP greška! Status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                setBrojFaktura(result.data.ukupno_faktura);
+            }
+        } catch (err) {
+            console.error('Greška pri učitavanju statistike:', err);
+        }
+    };
+
+    useEffect(() => {
+        ucitajStatistiku();
+    }, []);
+
     const menuItems = [
         {
             title: "Izlazni dokumenti",
@@ -101,7 +139,7 @@ export default function DashboardMeni() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
             ),
-            count: 1,
+            count: brojFaktura, // ✅ Dinamički broj iz API-ja
             action: null,
             bgColor: "from-indigo-600 to-blue-600",
             link: "/nacrti-prikaz"

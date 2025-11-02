@@ -54,6 +54,11 @@ interface FakturaApiResponse {
     ukupno_bez_pdv: number;
     ukupan_pdv: number;
     ukupno_sa_pdv: number;
+    status?: {  // ✅ Dodaj status objekat
+        id: number;
+        status: string;
+        FakturaFK: number;
+    };
 }
 
 interface StatistikaApiResponse {
@@ -158,7 +163,7 @@ export default function NacrtiPrikaz() {
                         id: faktura.id,
                         brojDokumenta: faktura.BrojDokumenta.toString(),
                         tipDokumenta: faktura.TipDokumenta,
-                        status: 'Poslato',
+                        status: faktura.status?.status || 'Nepoznat', // ✅ Uzima pravi status iz baze
                         iznos: `${formatBroj(faktura.ukupno_sa_pdv)} ${faktura.ListaValuta}`,
                         datumPrometa: formatDatum(faktura.DatumPrometa),
                         datumSlanja: formatDatum(faktura.created_at),
