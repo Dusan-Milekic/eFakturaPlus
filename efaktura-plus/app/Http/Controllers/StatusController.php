@@ -53,21 +53,70 @@ class StatusController extends Controller
      * Koliko ima faktura po statusu
      * GET /api/status/statistika
      */
-    public function kolikoImaFaktura(): JsonResponse
+    public function statistikaUlaznihFaktura(Request $request): JsonResponse
     {
         try {
-            // Ukupan broj faktura
-            $ukupnoFaktura = Faktura::count();
+            $kupacId = $request->input('kupac_id');
 
-            // Fakture grupisane po statusu
+            if (!$kupacId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Kupac ID je obavezan'
+                ], 400);
+            }
+
+            // Ukupan broj ulaznih faktura
+            $ukupnoFaktura = Faktura::where('KupacFK', $kupacId)->count();
+
+            // Broj nepročitanih/novih faktura (status = 'primljen')
+            $noveFakture = Faktura::where('KupacFK', $kupacId)
+                ->whereHas('status', fn($q) => $q->where('status', 'primljen'))
+                ->count();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'ukupno' => $ukupnoFaktura,
+                    'nove' => $noveFakture
+                ]
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška pri dobijanju statistike: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    public function kolikoImaFaktura(Request $request): JsonResponse
+    {
+        try {
+            // Uzmi ID iz requesta
+            $korisnikId = $request->input('korisnik_id'); // ili $request->korisnik_id
+
+            // Validacija
+            if (!$korisnikId) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Korisnik ID je obavezan'
+                ], 400);
+            }
+
+            // Ukupan broj NJEGOVIH izlaznih faktura
+            $ukupnoFaktura = Faktura::where('ProdavacFK', $korisnikId)->count();
+
+            // Njegove fakture grupisane po statusu
             $fakturePoStatusu = DB::table('faktura')
                 ->leftJoin('status', 'faktura.id', '=', 'status.FakturaFK')
+                ->where('faktura.ProdavacFK', $korisnikId) // ✅ Samo njegove
                 ->select('status.status', DB::raw('COUNT(faktura.id) as broj_faktura'))
                 ->groupBy('status.status')
                 ->get();
 
-            // Fakture bez statusa
-            $faktureBezStatusa = Faktura::whereDoesntHave('status')->count();
+            // Njegove fakture bez statusa
+            $faktureBezStatusa = Faktura::where('ProdavacFK', $korisnikId)
+                ->whereDoesntHave('status')
+                ->count();
 
             // Formatiraj rezultat
             $statistika = [];
@@ -75,7 +124,6 @@ class StatusController extends Controller
                 $statistika[$item->status ?? 'Bez statusa'] = $item->broj_faktura;
             }
 
-            // Dodaj fakture bez statusa ako postoje
             if ($faktureBezStatusa > 0 && !isset($statistika['Bez statusa'])) {
                 $statistika['Bez statusa'] = $faktureBezStatusa;
             }

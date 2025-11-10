@@ -44,17 +44,66 @@ export default function DashboardMeni() {
 
     }, []);
 
+    interface StatistikaUlaznih {
+        ukupno: number;
+        nove: number;
+    }
 
     // Dodaj state za broj faktura
     const [brojFaktura, setBrojFaktura] = useState<number>(0);
+    const [user, setUser] = useState<User | null>(null);
+    const [ulazneStatistika, setUlazneStatistika] = useState<StatistikaUlaznih>({
+        ukupno: 0,
+        nove: 0
+    });
 
+    useEffect(() => {
+        // Load user
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+            setUser(JSON.parse(userData));
+        }
+    }, []);
+
+    useEffect(() => {
+        if (user?.id) {
+            fetchUlazneStatistika();
+        }
+    }, [user]);
+
+    const fetchUlazneStatistika = async () => {
+        if (!user?.id) return;
+
+        try {
+            const response = await fetch(`/api/ulazne-fakture/statistika?kupac_id=${user.id}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to fetch statistics');
+            }
+
+            const data = await response.json();
+
+            if (data.success) {
+                setUlazneStatistika(data.data);
+            }
+        } catch (error) {
+            console.error('Error fetching ulazne statistika:', error);
+        }
+    };
     // Funkcija za učitavanje statistike
     const ucitajStatistiku = async (): Promise<void> => {
         try {
             const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
             const csrfToken = csrfTokenElement?.getAttribute('content');
-
-            const response = await fetch('/status/statistika', {
+            const userData = JSON.parse(localStorage.getItem('userData') || "");
+            const response = await fetch(`/status/statistika?korisnik_id=${userData.id}`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -102,11 +151,11 @@ export default function DashboardMeni() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
                 </svg>
             ),
-            count: 8,
-            badge: "NOVO",
+            count: ulazneStatistika.ukupno, // ✅ Dinamički broj
+            badge: ulazneStatistika.nove > 0 ? `${ulazneStatistika.nove} NOVO` : null, // ✅ Prikazi samo ako ima novih
             action: "Učitaj datoteku",
             bgColor: "from-purple-600 to-pink-600",
-            link: "/dokumenti/ulazni"
+            link: "/UlazniDokumenti"
         },
         {
             title: "Evidencija PDV",

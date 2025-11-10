@@ -12,6 +12,179 @@ use Barryvdh\DomPDF\Facade\Pdf;
 
 class FakturaController extends Controller
 {
+    public function ucitajFaktureZaKupca(Request $request)
+    {
+        try {
+            // Validacija
+            $validator = Validator::make($request->all(), [
+                'kupac_id' => 'required|integer|exists:pravno_lice,id',
+                'per_page' => 'nullable|integer|min:5|max:100',
+                'status' => 'nullable|string',
+                'search' => 'nullable|string'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validacija nije uspela',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $kupacId = $request->input('kupac_id');
+            $perPage = $request->input('per_page', 15);
+            $statusFilter = $request->input('status');
+            $search = $request->input('search');
+
+            // Query builder za fakture
+            $query = Faktura::with(['prodavac', 'status'])
+                ->where('KupacFK', $kupacId)
+                ->orderBy('created_at', 'desc');
+
+            // Filtriranje po statusu
+            if ($statusFilter && $statusFilter !== 'sve') {
+                if ($statusFilter === 'bez_statusa') {
+                    $query->whereDoesntHave('status');
+                } else {
+                    $query->whereHas('status', function ($q) use ($statusFilter) {
+                        $q->where('status', $statusFilter);
+                    });
+                }
+            }
+
+            // Pretraga po nazivu firme, PIB-u ili broju fakture
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('BrojDokumenta', 'LIKE', "%{$search}%")
+                        ->orWhereHas('prodavac', function ($subQ) use ($search) {
+                            $subQ->where('naziv_firme', 'LIKE', "%{$search}%")
+                                ->orWhere('pib', 'LIKE', "%{$search}%");
+                        });
+                });
+            }
+
+            // Paginacija
+            $fakture = $query->paginate($perPage);
+
+            // Učitaj stavke za svaku fakturu i izračunaj ukupne iznose
+            $stavke = DB::table('stavka')
+                ->whereIn('FakturaFK', $fakture->pluck('id'))
+                ->get()
+                ->groupBy('FakturaFK');
+
+            // Formatiraj podatke
+            $faktureData = $fakture->map(function ($faktura) use ($stavke) {
+                $fakturaStavke = $stavke->get($faktura->id, collect());
+
+                $ukupnoBezPDV = 0;
+                $ukupanPDV = 0;
+
+                foreach ($fakturaStavke as $stavka) {
+                    $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - $stavka->Umanjenje;
+                    $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+
+                    $ukupnoBezPDV += $iznosBezPDV;
+                    $ukupanPDV += $pdvIznos;
+                }
+
+                return [
+                    'id' => $faktura->id,
+                    'BrojDokumenta' => $faktura->BrojDokumenta,
+                    'TipDokumenta' => $faktura->TipDokumenta,
+                    'ListaValuta' => $faktura->ListaValuta,
+                    'BrojUgovora' => $faktura->BrojUgovora,
+                    'DatumPrometa' => $faktura->DatumPrometa,
+                    'DatumDospeca' => $faktura->DatumDospeca,
+                    'ObavezaPDV' => $faktura->ObavezaPDV,
+                    'created_at' => $faktura->created_at,
+                    'updated_at' => $faktura->updated_at,
+                    'prodavac' => [
+                        'id' => $faktura->prodavac->id,
+                        'naziv_firme' => $faktura->prodavac->naziv_firme,
+                        'pib' => $faktura->prodavac->pib,
+                        'jmbg' => $faktura->prodavac->jmbg,
+                        'grad' => $faktura->prodavac->grad,
+                        'adresa' => $faktura->prodavac->adresa,
+                        'email' => $faktura->prodavac->email,
+                        'telefon' => $faktura->prodavac->telefon
+                    ],
+                    'status' => $faktura->status ? [
+                        'id' => $faktura->status->id,
+                        'status' => $faktura->status->status
+                    ] : null,
+                    'stavke' => $fakturaStavke->map(function ($stavka) {
+                        $iznosBezPDV = ($stavka->Kolicina * $stavka->Cena) - $stavka->Umanjenje;
+                        $pdvIznos = $iznosBezPDV * ($stavka->PDV / 100);
+
+                        return [
+                            'id' => $stavka->id,
+                            'Sifra' => $stavka->Sifra,
+                            'Naziv' => $stavka->Naziv,
+                            'Kolicina' => $stavka->Kolicina,
+                            'JedinicaMere' => $stavka->JedinicaMere,
+                            'Cena' => $stavka->Cena,
+                            'Umanjenje' => $stavka->Umanjenje,
+                            'PDV' => $stavka->PDV,
+                            'Kategorija' => $stavka->Kategorija,
+                            'iznosBezPDV' => round($iznosBezPDV, 2),
+                            'pdvIznos' => round($pdvIznos, 2),
+                            'ukupno' => round($iznosBezPDV + $pdvIznos, 2)
+                        ];
+                    }),
+                    'ukupno_bez_pdv' => round($ukupnoBezPDV, 2),
+                    'ukupan_pdv' => round($ukupanPDV, 2),
+                    'ukupno_sa_pdv' => round($ukupnoBezPDV + $ukupanPDV, 2)
+                ];
+            });
+
+            // Statistika
+            $statistika = [
+                'ukupno_faktura' => $fakture->total(),
+                'ukupan_iznos_bez_pdv' => $faktureData->sum('ukupno_bez_pdv'),
+                'ukupan_pdv' => $faktureData->sum('ukupan_pdv'),
+                'ukupan_iznos_sa_pdv' => $faktureData->sum('ukupno_sa_pdv'),
+                'po_statusu' => [
+                    'placeno' => Faktura::where('KupacFK', $kupacId)
+                        ->whereHas('status', fn($q) => $q->where('status', 'plaćeno'))
+                        ->count(),
+                    'na_cekanju' => Faktura::where('KupacFK', $kupacId)
+                        ->whereHas('status', fn($q) => $q->where('status', 'na čekanju'))
+                        ->count(),
+                    'odbijeno' => Faktura::where('KupacFK', $kupacId)
+                        ->whereHas('status', fn($q) => $q->where('status', 'odbijeno'))
+                        ->count(),
+                    'bez_statusa' => Faktura::where('KupacFK', $kupacId)
+                        ->whereDoesntHave('status')
+                        ->count()
+                ]
+            ];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Ulazne fakture uspešno učitane',
+                'fakture' => $faktureData,
+                'pagination' => [
+                    'current_page' => $fakture->currentPage(),
+                    'per_page' => $fakture->perPage(),
+                    'total' => $fakture->total(),
+                    'last_page' => $fakture->lastPage()
+                ],
+                'statistika' => $statistika
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Greška pri učitavanju ulaznih faktura', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Došlo je do greške pri učitavanju ulaznih faktura',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
     public function generisiPDF($id, Request $request)
     {
         try {
