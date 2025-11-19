@@ -1,629 +1,790 @@
-import React, { useEffect, useRef, useState } from "react";
-import { gsap } from "gsap";
+import React, { useState, useEffect } from 'react';
+import { FileText, Upload, Download, Search, Filter, X, Eye, ChevronLeft } from 'lucide-react';
 
-interface Stavka {
+interface Dokument {
     id: number;
-    Sifra: number | null;
-    Naziv: string;
-    Kolicina: number;
-    JedinicaMere: string;
-    Cena: number;
-    Umanjenje: number;
-    PDV: number;
-    Kategorija: string;
-}
-
-interface Faktura {
-    id: number;
-    ListaValuta: string;
-    TipDokumenta: string;
-    BrojDokumenta: number;
-    BrojUgovora: string | null;
-    DatumPrometa: string;
-    DatumDospeca: string | null;
-    ObavezaPDV: boolean;
-    ProdavacFK: number;
-    KupacFK: number;
-    prodavac: {
-        id: number;
-        naziv_firme: string;
-        pib: string;
-        jmbg: string;
-        grad: string;
-        adresa: string;
-        email: string;
-        telefon: string;
-    };
-    stavke: Stavka[];
-    status?: {
-        id: number;
-        status: string;
-    };
-    ukupno_bez_pdv: number;
-    ukupan_pdv: number;
-    ukupno_sa_pdv: number;
-    created_at: string;
-}
-
-interface User {
-    id: number;
-    username: string;
-    ime: string;
-    prezime: string;
-    email: string;
-    naziv_firme: string;
-    jmbg: string;
-    pib: string;
+    brojDokumenta: string;
+    tipDokumenta: string;
+    status: string;
+    iznos: string;
+    datumPrometa: string;
+    datumSlanja: string;
+    prodavacNaziv?: string;
+    ukupnoBezPDV: number;
+    ukupanPDV: number;
+    ukupnoSaPDV: number;
 }
 
 interface Statistika {
+    ukupnoFaktura: number;
+    ukupanIznosBezPDV: number;
+    ukupanPDV: number;
+    ukupanIznosSaPDV: number;
+}
+
+interface UserData {
+    id: number;
+    pib: string;
+    email: string;
+    jmbg: string;
+    naziv_firme?: string;
+}
+
+// API Response tipovi
+interface PravnoLice {
+    naziv?: string;
+    naziv_firme?: string;
+    pib: string | null;
+    jmbg: string;
+    adresa?: string;
+    grad?: string;
+    telefon?: string;
+    email?: string;
+}
+
+interface FakturaApiResponse {
+    id: number;
+    BrojDokumenta: number;
+    TipDokumenta: string;
+    ListaValuta: 'RSD' | 'EUR' | 'USD';
+    BrojUgovora: string | null;
+    DatumPrometa: string;
+    DatumDospeca: string | null;
+    ObavezaPDV: number;
+    created_at: string;
+    updated_at: string;
+    prodavac: PravnoLice;
+    kupac: PravnoLice;
+    ukupno_bez_pdv: number;
+    ukupan_pdv: number;
+    ukupno_sa_pdv: number;
+    status?: {
+        id: number;
+        status: string;
+        FakturaFK: number;
+    };
+}
+
+interface StatistikaApiResponse {
     ukupno_faktura: number;
     ukupan_iznos_bez_pdv: number;
     ukupan_pdv: number;
     ukupan_iznos_sa_pdv: number;
-    po_statusu: {
-        placeno: number;
-        na_cekanju: number;
-        odbijeno: number;
-        bez_statusa: number;
-    };
+}
+
+interface ApiResponse {
+    success: boolean;
+    message: string;
+    data: FakturaApiResponse[];
+    statistika?: StatistikaApiResponse;
+}
+
+// Tip za detaljnu fakturu
+interface DetaljiFakture extends FakturaApiResponse {
+    napomena?: string;
+    napomena_interna?: string;
+    mesto_izdavanja?: string;
+    rok_placanja_dani?: number;
+    popust_procenat?: number;
+    popust_iznos?: number;
 }
 
 export default function UlazniDokumenti() {
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [fakture, setFakture] = useState<Faktura[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [user, setUser] = useState<User | null>(null);
-    const [selectedFaktura, setSelectedFaktura] = useState<Faktura | null>(null);
-    const [filterStatus, setFilterStatus] = useState<string>('sve');
-    const [searchTerm, setSearchTerm] = useState<string>('');
+    const [dokumenti, setDokumenti] = useState<Dokument[]>([]);
+    const [selectedDocs, setSelectedDocs] = useState<number[]>([]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<string | null>(null);
     const [statistika, setStatistika] = useState<Statistika>({
-        ukupno_faktura: 0,
-        ukupan_iznos_bez_pdv: 0,
-        ukupan_pdv: 0,
-        ukupan_iznos_sa_pdv: 0,
-        po_statusu: {
-            placeno: 0,
-            na_cekanju: 0,
-            odbijeno: 0,
-            bez_statusa: 0
-        }
+        ukupnoFaktura: 0,
+        ukupanIznosBezPDV: 0,
+        ukupanPDV: 0,
+        ukupanIznosSaPDV: 0
     });
 
-    // Load user data from localStorage
-    useEffect(() => {
-        const loadUserData = () => {
-            try {
-                const userData = localStorage.getItem('userData');
-                if (userData) {
-                    setUser(JSON.parse(userData));
-                }
-            } catch (error) {
-                console.error('Error parsing user data:', error);
-            }
-        };
+    // Filter states
+    const [searchTerm, setSearchTerm] = useState<string>('');
+    const [datumOd, setDatumOd] = useState<string>('2022-01-01');
+    const [datumDo, setDatumDo] = useState<string>('2025-11-01');
 
-        loadUserData();
+    // Detaljni prikaz fakture
+    const [odabranaFaktura, setOdabranaFaktura] = useState<DetaljiFakture | null>(null);
+    const [prikaziDetalje, setPrikaziDetalje] = useState<boolean>(false);
+    const [ucitavanjeDetalja, setUcitavanjeDetalja] = useState<boolean>(false);
+
+    // Učitaj fakture sa servera
+    useEffect(() => {
+        ucitajFakture();
     }, []);
 
-    // Fetch invoices when user, filter or search changes
-    useEffect(() => {
-        if (user?.id) {
-            fetchUlazneFakture();
-        }
-    }, [user, filterStatus, searchTerm]);
-
-    // GSAP animation
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container || fakture.length === 0) return;
-
-        gsap.set(container.children, { y: 40, opacity: 0 });
-        const tl = gsap.timeline();
-        tl.to(container.children, {
-            y: 0, opacity: 1, duration: 0.5, stagger: 0.08, ease: "power3.out"
-        });
-    }, [fakture]);
-
-    const fetchUlazneFakture = async () => {
-        if (!user?.id) return;
-
+    const ucitajFakture = async (): Promise<void> => {
         try {
             setLoading(true);
+            setError(null);
 
-            // Build query parameters
+            const userDataString = localStorage.getItem('userData');
+
+            if (!userDataString) {
+                setError('Korisnik nije prijavljen');
+                setLoading(false);
+                return;
+            }
+
+            const userData: UserData = JSON.parse(userDataString);
+
+            if (!userData.id) {
+                setError('ID korisnika nije pronađen');
+                setLoading(false);
+                return;
+            }
+
+            // ✅ JEDINA RAZLIKA - ovde menjamo fetch link
             const params = new URLSearchParams({
-                kupac_id: user.id.toString(),
+                kupac_id: userData.id.toString(),
                 per_page: '50'
             });
 
-            if (filterStatus && filterStatus !== 'sve') {
-                params.append('status', filterStatus);
-            }
-
-            if (searchTerm && searchTerm.trim() !== '') {
-                params.append('search', searchTerm.trim());
-            }
-
-            const response = await fetch(`/api/fakture/ulazne?${params}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                credentials: 'include'
-            });
+            const response = await fetch(
+                `/api/fakture/ulazne?${params}`,
+                {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include'
+                }
+            );
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to fetch invoices');
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || `HTTP greška! Status: ${response.status}`);
             }
 
-            const data = await response.json();
+            const result: any = await response.json();
 
-            if (data.success) {
-                setFakture(data.fakture || []);
-                setStatistika(data.statistika || {
-                    ukupno_faktura: 0,
-                    ukupan_iznos_bez_pdv: 0,
-                    ukupan_pdv: 0,
-                    ukupan_iznos_sa_pdv: 0,
-                    po_statusu: {
-                        placeno: 0,
-                        na_cekanju: 0,
-                        odbijeno: 0,
-                        bez_statusa: 0
+            console.log('🔥 CELA STRUKTURA:', result);
+            console.log('🔥 result.data:', result.data);
+            console.log('🔥 result.fakture:', result.fakture);
+            console.log('🔥 result keys:', Object.keys(result));
+
+            // Proveri gde su fakture - može biti result.data ili result.fakture
+            const fakture = result.data || result.fakture || [];
+            console.log('✅ Našao fakture:', fakture);
+
+            if (result.success && fakture.length > 0) {
+                const mapovaniFakture: Dokument[] = fakture.map((faktura: FakturaApiResponse) => {
+                    console.log('📄 Cela faktura:', faktura);
+                    console.log('👤 Prodavac:', faktura.prodavac);
+                    console.log('👤 Type of prodavac:', typeof faktura.prodavac);
+                    console.log('👤 Prodavac keys:', faktura.prodavac ? Object.keys(faktura.prodavac) : 'nema');
+
+                    // Pokušaj sve moguće varijante
+                    let prodavacNaziv = 'N/A';
+                    if (faktura.prodavac) {
+                        if (typeof faktura.prodavac === 'object') {
+                            prodavacNaziv = faktura.prodavac.naziv ||
+                                faktura.prodavac.naziv_firme ||
+                                faktura.prodavac.name ||
+                                'N/A';
+                        } else {
+                            prodavacNaziv = String(faktura.prodavac);
+                        }
                     }
+
+                    console.log('✅ Odabran naziv:', prodavacNaziv);
+
+                    return {
+                        id: faktura.id,
+                        brojDokumenta: faktura.BrojDokumenta.toString(),
+                        tipDokumenta: faktura.TipDokumenta,
+                        status: faktura.status?.status || 'Nepoznat',
+                        iznos: `${formatBroj(faktura.ukupno_sa_pdv)} ${faktura.ListaValuta}`,
+                        datumPrometa: formatDatum(faktura.DatumPrometa),
+                        datumSlanja: formatDatum(faktura.created_at),
+                        prodavacNaziv: prodavacNaziv,
+                        ukupnoBezPDV: faktura.ukupno_bez_pdv,
+                        ukupanPDV: faktura.ukupan_pdv,
+                        ukupnoSaPDV: faktura.ukupno_sa_pdv
+                    };
                 });
+
+                setDokumenti(mapovaniFakture);
+
+                if (result.statistika) {
+                    setStatistika({
+                        ukupnoFaktura: result.statistika.ukupno_faktura,
+                        ukupanIznosBezPDV: result.statistika.ukupan_iznos_bez_pdv,
+                        ukupanPDV: result.statistika.ukupan_pdv,
+                        ukupanIznosSaPDV: result.statistika.ukupan_iznos_sa_pdv
+                    });
+                }
+            } else {
+                throw new Error(result.message || 'Greška pri učitavanju faktura');
             }
         } catch (error) {
-            console.error('Error fetching ulazne fakture:', error);
-            setFakture([]);
+            console.error('Greška pri učitavanju faktura:', error);
+            setError(error instanceof Error ? error.message : 'Nepoznata greška');
         } finally {
             setLoading(false);
         }
     };
 
-    const izracunajUkupno = (stavke: Stavka[]) => {
-        const ukupnoBezPDV = stavke.reduce((sum, stavka) => {
-            return sum + ((stavka.Kolicina * stavka.Cena) - stavka.Umanjenje);
-        }, 0);
+    const ucitajDetaljeFakture = async (fakturaId: number): Promise<void> => {
+        try {
+            setUcitavanjeDetalja(true);
+            setError(null);
 
-        const ukupanPDV = stavke.reduce((sum, stavka) => {
-            const iznosBezPDV = (stavka.Kolicina * stavka.Cena) - stavka.Umanjenje;
-            return sum + (iznosBezPDV * stavka.PDV / 100);
-        }, 0);
+            const userDataString = localStorage.getItem('userData');
+            if (!userDataString) {
+                setError('Korisnik nije prijavljen');
+                return;
+            }
 
-        return {
-            ukupnoBezPDV: ukupnoBezPDV.toFixed(2),
-            ukupanPDV: ukupanPDV.toFixed(2),
-            ukupnoSaPDV: (ukupnoBezPDV + ukupanPDV).toFixed(2)
-        };
-    };
+            const userData: UserData = JSON.parse(userDataString);
+            const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
+            const csrfToken = csrfTokenElement?.getAttribute('content');
 
-    const getStatusColor = (status?: string) => {
-        if (!status) return 'bg-gray-500/20 text-gray-400';
+            // API poziv za detalje fakture - isti kao NacrtiPrikaz
+            const response = await fetch(
+                `/vratiFakturu/${fakturaId}`,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(userData)
+                }
+            );
 
-        switch (status.toLowerCase()) {
-            case 'plaćeno':
-            case 'placeno':
-                return 'bg-green-500/20 text-green-400';
-            case 'na čekanju':
-            case 'na cekanju':
-                return 'bg-yellow-500/20 text-yellow-400';
-            case 'odbijeno':
-                return 'bg-red-500/20 text-red-400';
-            case 'primljen':
-                return 'bg-blue-500/20 text-blue-400';
-            default:
-                return 'bg-purple-500/20 text-purple-400';
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || `HTTP greška! Status: ${response.status}`);
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                setOdabranaFaktura(result.data);
+                setPrikaziDetalje(true);
+            } else {
+                throw new Error(result.message || 'Greška pri učitavanju detalja fakture');
+            }
+        } catch (error) {
+            console.error('Greška pri učitavanju detalja fakture:', error);
+            setError(error instanceof Error ? error.message : 'Nepoznata greška');
+        } finally {
+            setUcitavanjeDetalja(false);
         }
     };
 
-    const handleDownloadPDF = async (fakturaId: number) => {
-        try {
-            const response = await fetch(`/faktura/${fakturaId}/pdf`, {
-                method: 'GET',
-                credentials: 'include'
-            });
+    const zatvoriDetalje = (): void => {
+        setPrikaziDetalje(false);
+        setOdabranaFaktura(null);
+    };
 
-            if (!response.ok) {
-                throw new Error('Failed to download PDF');
-            }
+    const toggleSelectDoc = (id: number): void => {
+        setSelectedDocs(prev =>
+            prev.includes(id) ? prev.filter(docId => docId !== id) : [...prev, id]
+        );
+    };
 
-            // Create blob and download
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `Faktura_${fakturaId}.pdf`;
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-        } catch (error) {
-            console.error('Error downloading PDF:', error);
-            alert('Greška pri preuzimanju PDF-a');
+    const toggleSelectAll = (): void => {
+        if (selectedDocs.length === filtriraneDokumente().length) {
+            setSelectedDocs([]);
+        } else {
+            setSelectedDocs(filtriraneDokumente().map(doc => doc.id));
+        }
+    };
+
+    const filtriraneDokumente = (): Dokument[] => {
+        return dokumenti.filter(doc => {
+            const matchesSearch = searchTerm === '' ||
+                doc.brojDokumenta.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                doc.prodavacNaziv?.toLowerCase().includes(searchTerm.toLowerCase());
+
+            const docDate = new Date(doc.datumPrometa);
+            const matchesDateRange = docDate >= new Date(datumOd) && docDate <= new Date(datumDo);
+
+            return matchesSearch && matchesDateRange;
+        });
+    };
+
+    const formatDatum = (datum: string): string => {
+        return new Date(datum).toLocaleDateString('sr-RS', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric'
+        });
+    };
+
+    const formatBroj = (broj: number): string => {
+        return broj.toLocaleString('sr-RS', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        });
+    };
+
+    const getStatusColor = (status: string): string => {
+        switch (status?.toLowerCase()) {
+            case 'poslato':
+                return 'bg-blue-500/20 text-blue-400';
+            case 'odobreno':
+                return 'bg-green-500/20 text-green-400';
+            case 'odbijeno':
+                return 'bg-red-500/20 text-red-400';
+            case 'nacrt':
+            default:
+                return 'bg-yellow-500/20 text-yellow-400';
         }
     };
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
                 <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-                    <p className="text-white text-xl mt-4">Učitavanje faktura...</p>
+                    <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-4"></div>
+                    <p className="text-white text-lg">Učitavanje dokumenata...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center p-6">
+                <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-8 max-w-md">
+                    <h3 className="text-red-400 text-xl font-semibold mb-2">Greška</h3>
+                    <p className="text-white">{error}</p>
+                    <button
+                        onClick={ucitajFakture}
+                        className="mt-4 px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                    >
+                        Pokušaj ponovo
+                    </button>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 py-8 px-4">
-            <div className="max-w-7xl mx-auto" ref={containerRef}>
-                {/* Header */}
-                <div className="mb-8">
-                    <h1 className="text-4xl font-bold text-white mb-2">
-                        Ulazni Dokumenti
-                    </h1>
-                    <p className="text-gray-400">Pregled primljenih faktura</p>
-                </div>
+        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+            {/* Header */}
+            {!prikaziDetalje && (
+                <div className="sticky top-0 z-40 backdrop-blur-xl bg-slate-900/80 border-b border-slate-700/50">
+                    <div className="container mx-auto px-6 py-4">
+                        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold text-white mb-1">Ulazni dokumenti</h1>
+                                <p className="text-slate-400">Pregledajte i upravljajte ulaznim fakturama</p>
+                            </div>
 
-                {/* Filters */}
-                <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6 mb-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Search */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">
-                                Pretraga
-                            </label>
-                            <input
-                                type="text"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                placeholder="Pretraži po nazivu firme, PIB-u ili broju fakture..."
-                                className="w-full px-4 py-2 bg-gray-900/80 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                            {/* Stats Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                                    <p className="text-slate-400 text-xs mb-1">Ukupno faktura</p>
+                                    <p className="text-white text-xl font-bold">{statistika.ukupnoFaktura}</p>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                                    <p className="text-slate-400 text-xs mb-1">Bez PDV</p>
+                                    <p className="text-white text-xl font-bold">{formatBroj(statistika.ukupanIznosBezPDV)}</p>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                                    <p className="text-slate-400 text-xs mb-1">PDV</p>
+                                    <p className="text-white text-xl font-bold">{formatBroj(statistika.ukupanPDV)}</p>
+                                </div>
+                                <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                                    <p className="text-slate-400 text-xs mb-1">Sa PDV</p>
+                                    <p className="text-emerald-400 text-xl font-bold">{formatBroj(statistika.ukupanIznosSaPDV)}</p>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                </div>
+            )}
 
-                        {/* Status Filter */}
-                        <div>
-                            <label className="block text-sm font-medium text-gray-400 mb-2">
-                                Status
-                            </label>
-                            <select
-                                value={filterStatus}
-                                onChange={(e) => setFilterStatus(e.target.value)}
-                                className="w-full px-4 py-2 bg-gray-900/80 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            {/* Main Content */}
+            {!prikaziDetalje ? (
+                <div className="container mx-auto px-6 py-8">
+                    {/* Filters */}
+                    <div className="bg-slate-900/50 backdrop-blur-xl rounded-xl border border-slate-700/50 p-6 mb-6">
+                        <div className="flex flex-col md:flex-row gap-4">
+                            {/* Search */}
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400" size={20} />
+                                <input
+                                    type="text"
+                                    placeholder="Pretraži po broju ili prodavcu..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                />
+                            </div>
+
+                            {/* Date filters */}
+                            <div className="flex gap-3">
+                                <input
+                                    type="date"
+                                    value={datumOd}
+                                    onChange={(e) => setDatumOd(e.target.value)}
+                                    className="px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                />
+                                <input
+                                    type="date"
+                                    value={datumDo}
+                                    onChange={(e) => setDatumDo(e.target.value)}
+                                    className="px-4 py-3 bg-slate-800/50 border border-slate-700/50 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+                                />
+                            </div>
+
+                            {/* Refresh button */}
+                            <button
+                                onClick={ucitajFakture}
+                                className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl font-medium transition-colors whitespace-nowrap"
                             >
-                                <option value="sve">Sve fakture</option>
-                                <option value="plaćeno">Plaćeno</option>
-                                <option value="na čekanju">Na čekanju</option>
-                                <option value="odbijeno">Odbijeno</option>
-                                <option value="primljen">Primljeno</option>
-                                <option value="bez_statusa">Bez statusa</option>
-                            </select>
+                                Osveži
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Documents Table */}
+                    <div className="bg-slate-900/50 backdrop-blur-xl rounded-xl border border-slate-700/50 overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-slate-800/50 border-b border-slate-700/50">
+                                    <tr>
+                                        <th className="px-6 py-4 text-left">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedDocs.length === filtriraneDokumente().length && filtriraneDokumente().length > 0}
+                                                onChange={toggleSelectAll}
+                                                className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                                            />
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-slate-300 font-semibold text-sm">Broj dokumenta</th>
+                                        <th className="px-6 py-4 text-left text-slate-300 font-semibold text-sm">Prodavac</th>
+                                        <th className="px-6 py-4 text-left text-slate-300 font-semibold text-sm">Tip</th>
+                                        <th className="px-6 py-4 text-left text-slate-300 font-semibold text-sm">Status</th>
+                                        <th className="px-6 py-4 text-left text-slate-300 font-semibold text-sm">Datum prometa</th>
+                                        <th className="px-6 py-4 text-right text-slate-300 font-semibold text-sm">Iznos</th>
+                                        <th className="px-6 py-4 text-center text-slate-300 font-semibold text-sm">Akcije</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filtriraneDokumente().length === 0 ? (
+                                        <tr>
+                                            <td colSpan={8} className="px-6 py-12 text-center text-slate-400">
+                                                <FileText className="mx-auto mb-3 text-slate-600" size={48} />
+                                                <p className="text-lg">Nema dokumenata za prikaz</p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filtriraneDokumente().map((doc) => (
+                                            <tr
+                                                key={doc.id}
+                                                onClick={() => ucitajDetaljeFakture(doc.id)}
+                                                className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors cursor-pointer"
+                                            >
+                                                <td className="px-6 py-4">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedDocs.includes(doc.id)}
+                                                        onChange={() => toggleSelectDoc(doc.id)}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="w-4 h-4 rounded border-slate-600 bg-slate-700 text-blue-500 focus:ring-blue-500"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4 text-white font-medium">{doc.brojDokumenta}</td>
+                                                <td className="px-6 py-4 text-white">{doc.prodavacNaziv || '-'}</td>
+                                                <td className="px-6 py-4 text-slate-300">{doc.tipDokumenta}</td>
+                                                <td className="px-6 py-4">
+                                                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(doc.status)}`}>
+                                                        {doc.status}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 text-slate-300">{doc.datumPrometa}</td>
+                                                <td className="px-6 py-4 text-right text-white font-semibold">
+                                                    {doc.iznos}
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                ucitajDetaljeFakture(doc.id);
+                                                            }}
+                                                            className="p-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors"
+                                                            title="Pregledaj detalje"
+                                                        >
+                                                            <Eye size={18} />
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                window.open(`/generisiPDF/${doc.id}`, '_blank');
+                                                            }}
+                                                            className="p-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-colors"
+                                                            title="Preuzmi PDF"
+                                                        >
+                                                            <Download size={18} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
-
-                {/* Statistics */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                    <div className="bg-gradient-to-br from-blue-500/20 to-purple-500/20 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                        <div className="text-gray-400 text-sm mb-1">Ukupno faktura</div>
-                        <div className="text-white text-3xl font-bold">{statistika.ukupno_faktura}</div>
+            ) : odabranaFaktura ? (
+                // Detail View
+                <div className="container mx-auto px-6 py-8">
+                    <div className="mb-6">
+                        <button
+                            onClick={zatvoriDetalje}
+                            className="flex items-center gap-2 px-4 py-2 bg-slate-800/50 hover:bg-slate-800 text-white rounded-xl transition-colors border border-slate-700/50"
+                        >
+                            <ChevronLeft size={20} />
+                            Nazad na listu
+                        </button>
                     </div>
-                    <div className="bg-gradient-to-br from-green-500/20 to-emerald-500/20 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                        <div className="text-gray-400 text-sm mb-1">Plaćeno</div>
-                        <div className="text-white text-3xl font-bold">
-                            {statistika.po_statusu.placeno}
-                        </div>
-                    </div>
-                    <div className="bg-gradient-to-br from-yellow-500/20 to-orange-500/20 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                        <div className="text-gray-400 text-sm mb-1">Na čekanju</div>
-                        <div className="text-white text-3xl font-bold">
-                            {statistika.po_statusu.na_cekanju}
-                        </div>
-                    </div>
-                    <div className="bg-gradient-to-br from-red-500/20 to-pink-500/20 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                        <div className="text-gray-400 text-sm mb-1">Odbijeno</div>
-                        <div className="text-white text-3xl font-bold">
-                            {statistika.po_statusu.odbijeno}
-                        </div>
-                    </div>
-                </div>
 
-                {/* Invoices List */}
-                <div className="space-y-4">
-                    {fakture.length === 0 ? (
-                        <div className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-12 text-center">
-                            <svg className="w-16 h-16 mx-auto text-gray-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            <p className="text-gray-400 text-lg">Nema faktura za prikaz</p>
-                        </div>
-                    ) : (
-                        fakture.map((faktura) => {
-                            const ukupno = faktura.ukupno_sa_pdv
-                                ? {
-                                    ukupnoBezPDV: faktura.ukupno_bez_pdv.toFixed(2),
-                                    ukupanPDV: faktura.ukupan_pdv.toFixed(2),
-                                    ukupnoSaPDV: faktura.ukupno_sa_pdv.toFixed(2)
-                                }
-                                : izracunajUkupno(faktura.stavke);
-
-                            return (
-                                <div
-                                    key={faktura.id}
-                                    className="bg-white/5 backdrop-blur-xl rounded-2xl border border-white/10 p-6 hover:bg-white/10 transition-all cursor-pointer"
-                                    onClick={() => setSelectedFaktura(faktura)}
-                                >
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        {/* Left Side - Invoice Info */}
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-3 mb-3">
-                                                <h3 className="text-xl font-semibold text-white">
-                                                    Faktura #{faktura.BrojDokumenta}
-                                                </h3>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(faktura.status?.status)}`}>
-                                                    {faktura.status?.status || 'Bez statusa'}
-                                                </span>
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                                                <div>
-                                                    <span className="text-gray-400">Prodavac: </span>
-                                                    <span className="text-white font-medium">{faktura.prodavac.naziv_firme}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-gray-400">PIB: </span>
-                                                    <span className="text-white font-medium">{faktura.prodavac.pib}</span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-gray-400">Datum prometa: </span>
-                                                    <span className="text-white font-medium">
-                                                        {new Date(faktura.DatumPrometa).toLocaleDateString('sr-RS')}
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    <span className="text-gray-400">Datum dospeća: </span>
-                                                    <span className="text-white font-medium">
-                                                        {faktura.DatumDospeca ? new Date(faktura.DatumDospeca).toLocaleDateString('sr-RS') : 'N/A'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Right Side - Amount */}
-                                        <div className="text-right">
-                                            <div className="text-gray-400 text-sm mb-1">Iznos za plaćanje</div>
-                                            <div className="text-3xl font-bold text-white">
-                                                {ukupno.ukupnoSaPDV} {faktura.ListaValuta}
-                                            </div>
-                                            <div className="text-sm text-gray-400 mt-1">
-                                                ({ukupno.ukupnoBezPDV} + {ukupno.ukupanPDV} PDV)
-                                            </div>
-                                        </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Leva strana - Informacije */}
+                        <div className="space-y-6">
+                            {/* Osnovne informacije */}
+                            <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <FileText className="text-blue-400" size={20} />
+                                    Osnovne informacije
+                                </h3>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Broj dokumenta</p>
+                                        <p className="text-white font-medium">{odabranaFaktura.BrojDokumenta}</p>
                                     </div>
-
-                                    {/* Quick Actions */}
-                                    <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setSelectedFaktura(faktura);
-                                            }}
-                                            className="px-4 py-2 bg-blue-600/20 text-blue-400 rounded-lg text-sm font-medium hover:bg-blue-600/30 transition-colors"
-                                        >
-                                            Pregled detalja
-                                        </button>
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleDownloadPDF(faktura.id);
-                                            }}
-                                            className="px-4 py-2 bg-gray-600/20 text-gray-400 rounded-lg text-sm font-medium hover:bg-gray-600/30 transition-colors"
-                                        >
-                                            Preuzmi PDF
-                                        </button>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Status</p>
+                                        <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(odabranaFaktura.status?.status || 'Nacrt')}`}>
+                                            {odabranaFaktura.status?.status || 'Nacrt'}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Tip dokumenta</p>
+                                        <p className="text-white font-medium">{odabranaFaktura.TipDokumenta}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Valuta</p>
+                                        <p className="text-white font-medium">{odabranaFaktura.ListaValuta}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Broj ugovora</p>
+                                        <p className="text-white font-medium">{odabranaFaktura.BrojUgovora || '-'}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Datum prometa</p>
+                                        <p className="text-white font-medium">{formatDatum(odabranaFaktura.DatumPrometa)}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Datum dospeća</p>
+                                        <p className="text-white font-medium">
+                                            {odabranaFaktura.DatumDospeca ? formatDatum(odabranaFaktura.DatumDospeca) : '-'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Obaveza PDV</p>
+                                        <p className="text-white font-medium">
+                                            {odabranaFaktura.ObavezaPDV ? 'Da' : 'Ne'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Kreirano</p>
+                                        <p className="text-white font-medium">{formatDatum(odabranaFaktura.created_at)}</p>
                                     </div>
                                 </div>
-                            );
-                        })
-                    )}
-                </div>
+                            </div>
 
-                {/* Invoice Detail Modal */}
-                {selectedFaktura && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-                        <div className="bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 rounded-2xl border border-white/10 max-w-5xl w-full max-h-[90vh] overflow-y-auto">
-                            {/* Modal Header */}
-                            <div className="sticky top-0 bg-gray-900/95 backdrop-blur-xl border-b border-white/10 p-6 flex items-center justify-between">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-white">
-                                        Faktura #{selectedFaktura.BrojDokumenta}
-                                    </h2>
-                                    <p className="text-gray-400 text-sm mt-1">
-                                        {selectedFaktura.TipDokumenta}
-                                    </p>
+                            {/* Prodavac */}
+                            <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <FileText className="text-emerald-400" size={20} />
+                                    Prodavac
+                                </h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Naziv</p>
+                                        <p className="text-white font-medium">
+                                            {odabranaFaktura.prodavac?.naziv || odabranaFaktura.prodavac?.naziv_firme || 'N/A'}
+                                        </p>
+                                    </div>
+                                    {odabranaFaktura.prodavac?.pib && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">PIB</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.pib}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.prodavac?.jmbg && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">JMBG</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.jmbg}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.prodavac?.adresa && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Adresa</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.adresa}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.prodavac?.grad && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Grad</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.grad}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.prodavac?.telefon && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Telefon</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.telefon}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.prodavac?.email && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Email</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.prodavac.email}</p>
+                                        </div>
+                                    )}
                                 </div>
+                            </div>
+
+                            {/* Kupac */}
+                            <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <FileText className="text-purple-400" size={20} />
+                                    Kupac
+                                </h3>
+                                <div className="space-y-3">
+                                    <div>
+                                        <p className="text-slate-400 text-sm mb-1">Naziv</p>
+                                        <p className="text-white font-medium">
+                                            {odabranaFaktura.kupac?.naziv || odabranaFaktura.kupac?.naziv_firme || 'N/A'}
+                                        </p>
+                                    </div>
+                                    {odabranaFaktura.kupac?.pib && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">PIB</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.pib}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.kupac?.jmbg && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">JMBG</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.jmbg}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.kupac?.adresa && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Adresa</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.adresa}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.kupac?.grad && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Grad</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.grad}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.kupac?.telefon && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Telefon</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.telefon}</p>
+                                        </div>
+                                    )}
+                                    {odabranaFaktura.kupac?.email && (
+                                        <div>
+                                            <p className="text-slate-400 text-sm mb-1">Email</p>
+                                            <p className="text-white font-medium">{odabranaFaktura.kupac.email}</p>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Finansijski podaci */}
+                            <div className="bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-xl p-5 border border-blue-500/30">
+                                <h3 className="text-lg font-semibold text-white mb-4">Finansijski pregled</h3>
+                                <div className="space-y-4">
+                                    <div className="flex justify-between items-center pb-3 border-b border-slate-700/50">
+                                        <span className="text-slate-300">Iznos bez PDV</span>
+                                        <span className="text-white font-semibold text-lg">
+                                            {formatBroj(odabranaFaktura.ukupno_bez_pdv)} {odabranaFaktura.ListaValuta}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pb-3 border-b border-slate-700/50">
+                                        <span className="text-slate-300">PDV</span>
+                                        <span className="text-white font-semibold text-lg">
+                                            {formatBroj(odabranaFaktura.ukupan_pdv)} {odabranaFaktura.ListaValuta}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2">
+                                        <span className="text-white font-semibold text-lg">Ukupno sa PDV</span>
+                                        <span className="text-blue-400 font-bold text-2xl">
+                                            {formatBroj(odabranaFaktura.ukupno_sa_pdv)} {odabranaFaktura.ListaValuta}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Akcije */}
+                            <div className="flex gap-3">
                                 <button
-                                    onClick={() => setSelectedFaktura(null)}
-                                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                                    onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                    className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
                                 >
-                                    <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                    </svg>
+                                    <Download size={18} />
+                                    Preuzmi PDF
+                                </button>
+                                <button
+                                    onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                    className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
+                                >
+                                    <Eye size={18} />
+                                    Pregledaj PDF
                                 </button>
                             </div>
+                        </div>
 
-                            {/* Modal Content */}
-                            <div className="p-6 space-y-6">
-                                {/* Seller Info */}
-                                <div className="bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                                    <h3 className="text-lg font-semibold text-white mb-4">Podaci o prodavcu</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                                        <div>
-                                            <span className="text-gray-400">Naziv firme:</span>
-                                            <div className="text-white font-medium mt-1">{selectedFaktura.prodavac.naziv_firme}</div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">PIB:</span>
-                                            <div className="text-white font-medium mt-1">{selectedFaktura.prodavac.pib}</div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Adresa:</span>
-                                            <div className="text-white font-medium mt-1">
-                                                {selectedFaktura.prodavac.adresa}, {selectedFaktura.prodavac.grad}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Email:</span>
-                                            <div className="text-white font-medium mt-1">{selectedFaktura.prodavac.email}</div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Telefon:</span>
-                                            <div className="text-white font-medium mt-1">{selectedFaktura.prodavac.telefon || 'N/A'}</div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Status:</span>
-                                            <div className="mt-1">
-                                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedFaktura.status?.status)}`}>
-                                                    {selectedFaktura.status?.status || 'Bez statusa'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Invoice Details */}
-                                <div className="bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                                    <h3 className="text-lg font-semibold text-white mb-4">Detalji fakture</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                                        <div>
-                                            <span className="text-gray-400">Datum prometa:</span>
-                                            <div className="text-white font-medium mt-1">
-                                                {new Date(selectedFaktura.DatumPrometa).toLocaleDateString('sr-RS')}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Datum dospeća:</span>
-                                            <div className="text-white font-medium mt-1">
-                                                {selectedFaktura.DatumDospeca
-                                                    ? new Date(selectedFaktura.DatumDospeca).toLocaleDateString('sr-RS')
-                                                    : 'N/A'}
-                                            </div>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Valuta:</span>
-                                            <div className="text-white font-medium mt-1">{selectedFaktura.ListaValuta}</div>
-                                        </div>
-                                        {selectedFaktura.BrojUgovora && (
-                                            <div>
-                                                <span className="text-gray-400">Broj ugovora:</span>
-                                                <div className="text-white font-medium mt-1">{selectedFaktura.BrojUgovora}</div>
-                                            </div>
-                                        )}
-                                        <div>
-                                            <span className="text-gray-400">PDV obaveza:</span>
-                                            <div className="text-white font-medium mt-1">
-                                                {selectedFaktura.ObavezaPDV ? 'Da' : 'Ne'}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Items Table */}
-                                <div className="bg-white/5 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                                    <h3 className="text-lg font-semibold text-white mb-4">Stavke</h3>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-sm">
-                                            <thead>
-                                                <tr className="border-b border-white/10">
-                                                    <th className="text-left py-3 px-3 text-gray-400 font-medium">Rb.</th>
-                                                    <th className="text-left py-3 px-3 text-gray-400 font-medium">Naziv</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">Količina</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">J.M.</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">Cena</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">Umanjenje</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">PDV %</th>
-                                                    <th className="text-right py-3 px-3 text-gray-400 font-medium">Ukupno</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {selectedFaktura.stavke.map((stavka, index) => {
-                                                    const iznosBezPDV = (stavka.Kolicina * stavka.Cena) - stavka.Umanjenje;
-                                                    const pdvIznos = iznosBezPDV * stavka.PDV / 100;
-                                                    const ukupno = iznosBezPDV + pdvIznos;
-
-                                                    return (
-                                                        <tr key={stavka.id} className="border-b border-white/5">
-                                                            <td className="py-3 px-3 text-white">{index + 1}</td>
-                                                            <td className="py-3 px-3 text-white">{stavka.Naziv}</td>
-                                                            <td className="py-3 px-3 text-white text-right">{stavka.Kolicina}</td>
-                                                            <td className="py-3 px-3 text-white text-right">{stavka.JedinicaMere}</td>
-                                                            <td className="py-3 px-3 text-white text-right">{stavka.Cena.toFixed(2)}</td>
-                                                            <td className="py-3 px-3 text-white text-right">{stavka.Umanjenje.toFixed(2)}</td>
-                                                            <td className="py-3 px-3 text-white text-right">{stavka.PDV}%</td>
-                                                            <td className="py-3 px-3 text-white text-right font-medium">{ukupno.toFixed(2)}</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                {/* Summary */}
-                                <div className="bg-gradient-to-br from-white/5 via-blue-500/5 to-purple-500/5 backdrop-blur-xl rounded-xl border border-white/10 p-6">
-                                    <div className="space-y-3 text-right max-w-md ml-auto">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-gray-400">Ukupno bez PDV</span>
-                                            <span className="text-white font-semibold">
-                                                {izracunajUkupno(selectedFaktura.stavke).ukupnoBezPDV} {selectedFaktura.ListaValuta}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-gray-400">Ukupan PDV</span>
-                                            <span className="text-white font-semibold">
-                                                {izracunajUkupno(selectedFaktura.stavke).ukupanPDV} {selectedFaktura.ListaValuta}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between items-center text-xl border-t border-white/10 pt-3">
-                                            <span className="text-gray-400">Iznos za plaćanje</span>
-                                            <span className="text-white font-bold">
-                                                {izracunajUkupno(selectedFaktura.stavke).ukupnoSaPDV} {selectedFaktura.ListaValuta}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Actions */}
-                                <div className="flex flex-wrap gap-4 justify-end">
-                                    <button
-                                        onClick={() => setSelectedFaktura(null)}
-                                        className="px-6 py-3 bg-gray-800 text-white rounded-xl font-medium hover:bg-gray-700 transition-colors"
-                                    >
-                                        Zatvori
-                                    </button>
-                                    <button
-                                        onClick={() => handleDownloadPDF(selectedFaktura.id)}
-                                        className="px-6 py-3 bg-blue-600/20 text-blue-400 rounded-xl font-medium hover:bg-blue-600/30 transition-colors"
-                                    >
-                                        Preuzmi PDF
-                                    </button>
-                                    <button
-                                        onClick={() => window.print()}
-                                        className="px-6 py-3 bg-purple-600/20 text-purple-400 rounded-xl font-medium hover:bg-purple-600/30 transition-colors"
-                                    >
-                                        Štampaj
-                                    </button>
-                                </div>
+                        {/* Desna strana - PDF Viewer */}
+                        <div className="bg-slate-900/50 rounded-xl border border-slate-700/50 overflow-hidden lg:sticky lg:top-24 lg:self-start">
+                            <div className="bg-slate-800/50 p-4 border-b border-slate-700/50">
+                                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                                    <Eye className="text-cyan-400" size={20} />
+                                    PDF pregled
+                                </h3>
+                            </div>
+                            <div className="p-0 h-[600px] bg-slate-900">
+                                <iframe
+                                    src={`/generisiPDF/${odabranaFaktura.id}`}
+                                    className="w-full h-full border-0"
+                                    title="PDF Preview"
+                                />
                             </div>
                         </div>
                     </div>
-                )}
-            </div>
+                </div>
+            ) : null}
+
+            {/* Loading overlay za detalje */}
+            {ucitavanjeDetalja && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center">
+                    <div className="text-center">
+                        <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500 mb-4"></div>
+                        <p className="text-white text-lg">Učitavanje detalja fakture...</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
