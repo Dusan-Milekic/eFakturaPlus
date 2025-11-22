@@ -58,6 +58,7 @@ export default function IzlazniDokumenti() {
     const [searchedText, setText] = useState<string>("");
     const [showOtpremnica, setShowOtpremnica] = useState(false);
     const [user, setUser] = useState<User | null>(null);
+    const [slanje, setSlanje] = useState<boolean>(false); // ✅ DODATO
 
     const [formData, setFormData] = useState<FormData>({
         listaValuta: 'RSD',
@@ -203,7 +204,15 @@ export default function IzlazniDokumenti() {
     const ukupno = izracunajUkupno();
 
     const PosaljiDokument = async () => {
+        // ✅ ZAŠTITA OD DUPLOG KLIKA
+        if (slanje) {
+            console.log('Već se šalje dokument, molimo sačekajte...');
+            return;
+        }
+
         try {
+            setSlanje(true); // ✅ Blokiraj dugme
+
             if (!formData.brojDokumenta) {
                 alert('Broj dokumenta je obavezan!');
                 return;
@@ -253,8 +262,11 @@ export default function IzlazniDokumenti() {
                     klasifikacija: stavka.klasifikacija
                 }))
             };
-            const TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-            const response = await fetch('/posaljiDokument', {
+
+            const TOKEN = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+            // ✅ ISPRAVLJEN ENDPOINT
+            const response = await fetch('/PosaljiFakturu', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -264,16 +276,23 @@ export default function IzlazniDokumenti() {
                 body: JSON.stringify(dokumentZaSlanje)
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Greška pri slanju dokumenta');
-            }
-
             const result = await response.json();
 
-            alert('Dokument uspešno poslat!');
+            // ✅ PROVERI STATUS CODE
+            if (!response.ok) {
+                // Ako je duplikat (409 Conflict)
+                if (response.status === 409) {
+                    alert('⚠️ Faktura sa ovim brojem već postoji! Molimo promenite broj dokumenta.');
+                    return;
+                }
+                throw new Error(result.message || 'Greška pri slanju dokumenta');
+            }
+
+            // ✅ USPEŠNO POSLATO
+            alert('✅ Dokument uspešno poslat!');
             console.log('Odgovor:', result);
 
+            // ✅ RESETUJ FORMU
             setFormData({
                 listaValuta: 'RSD',
                 tipDokumenta: 'Faktura',
@@ -302,9 +321,16 @@ export default function IzlazniDokumenti() {
             });
             setText('');
 
+            // ✅ OPCIONO: Osveži stranicu ili preusmeravaj
+            // window.location.reload();
+            // ili
+            // window.location.href = '/fakture';
+
         } catch (error) {
             console.error('Greška:', error);
             alert(error instanceof Error ? error.message : 'Došlo je do greške pri slanju dokumenta. Molimo pokušajte ponovo.');
+        } finally {
+            setSlanje(false); // ✅ Uvek oslobodi dugme
         }
     };
 
@@ -736,9 +762,23 @@ export default function IzlazniDokumenti() {
                         </button>
                         <button
                             type="submit"
-                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-medium hover:shadow-lg hover:scale-105 transition-all"
+                            disabled={slanje}
+                            className={`px-6 py-3 rounded-xl font-medium transition-all ${slanje
+                                ? 'bg-gray-500 text-gray-300 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-lg hover:scale-105'
+                                }`}
                         >
-                            Pošalji dokument
+                            {slanje ? (
+                                <span className="flex items-center gap-2">
+                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Slanje...
+                                </span>
+                            ) : (
+                                'Pošalji dokument'
+                            )}
                         </button>
                     </div>
                 </form>

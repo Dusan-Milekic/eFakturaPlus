@@ -205,4 +205,65 @@ class StatusController extends Controller
             ], 500);
         }
     }
+
+    public function prihvatiFakturu($fakturaId): JsonResponse
+    {
+        try {
+            // Proveri da li faktura postoji
+            $faktura = Faktura::findOrFail($fakturaId);
+
+            // Dobij ili kreiraj status fakture
+            $status = $faktura->status;
+
+            if (!$status) {
+                // Kreiraj novi status ako ne postoji
+                $status = Status::create([
+                    'FakturaFK' => $fakturaId,
+                    'status' => 'prihvacen'
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Faktura uspešno prihvaćena',
+                    'data' => [
+                        'faktura_id' => $fakturaId,
+                        'status' => $status
+                    ]
+                ], 201);
+            }
+
+            // Proveri da li je faktura već prihvaćena
+            if ($status->status === 'prihvacen') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Faktura je već prihvaćena'
+                ], 400);
+            }
+
+            // Ažuriraj status na 'prihvacen'
+            $status->update([
+                'status' => 'prihvacen'
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Faktura uspešno prihvaćena',
+                'data' => [
+                    'faktura_id' => $fakturaId,
+                    'status' => $status
+                ]
+            ], 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Faktura sa ID ' . $fakturaId . ' ne postoji'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Greška pri prihvatanju fakture: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

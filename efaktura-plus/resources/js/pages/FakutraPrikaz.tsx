@@ -106,6 +106,7 @@ export default function NacrtiPrikaz() {
     const [odabranaFaktura, setOdabranaFaktura] = useState<DetaljiFakture | null>(null);
     const [prikaziDetalje, setPrikaziDetalje] = useState<boolean>(false);
     const [ucitavanjeDetalja, setUcitavanjeDetalja] = useState<boolean>(false);
+    const [prihvatanjeFakture, setPrihvatanjeFakture] = useState<boolean>(false);
 
     // Učitaj fakture sa servera
     useEffect(() => {
@@ -235,6 +236,8 @@ export default function NacrtiPrikaz() {
             const result = await response.json();
 
             if (result.success) {
+                console.log('📄 Detalji fakture:', result.data);
+                console.log('🔖 Status fakture:', result.data.status);
                 setOdabranaFaktura(result.data);
                 setPrikaziDetalje(true);
             } else {
@@ -255,6 +258,50 @@ export default function NacrtiPrikaz() {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2
         }).format(broj);
+    };
+
+    // Funkcija za prihvatanje fakture
+    const prihvatiFakturu = async (fakturaId: number): Promise<void> => {
+        try {
+            setPrihvatanjeFakture(true);
+
+            const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
+            const csrfToken = csrfTokenElement?.getAttribute('content');
+
+            const response = await fetch(`/prihvatiFakturu/${fakturaId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+                },
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || 'Greška pri prihvatanju fakture');
+            }
+
+            const result = await response.json();
+
+            if (result.success) {
+                alert('Faktura je uspešno prihvaćena!');
+                // Osveži listu faktura
+                await ucitajFakture();
+                // Osveži detalje ako je faktura otvorena
+                if (odabranaFaktura && odabranaFaktura.id === fakturaId) {
+                    await ucitajDetaljeFakture(fakturaId);
+                }
+            } else {
+                throw new Error(result.message || 'Greška pri prihvatanju fakture');
+            }
+        } catch (err) {
+            console.error('Greška:', err);
+            alert(err instanceof Error ? err.message : 'Došlo je do greške pri prihvatanju fakture');
+        } finally {
+            setPrihvatanjeFakture(false);
+        }
     };
 
     const formatDatum = (datum: string): string => {
@@ -571,6 +618,23 @@ export default function NacrtiPrikaz() {
                                             <p className="text-white font-medium">{odabranaFaktura.BrojDokumenta}</p>
                                         </div>
                                         <div>
+                                            <p className="text-slate-400 text-sm mb-1">Status</p>
+                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium ${odabranaFaktura.status?.status === 'prihvacen'
+                                                ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                                                : odabranaFaktura.status?.status === 'primljen'
+                                                    ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                                    : 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                                }`}>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${odabranaFaktura.status?.status === 'prihvacen'
+                                                    ? 'bg-green-400'
+                                                    : odabranaFaktura.status?.status === 'primljen'
+                                                        ? 'bg-blue-400'
+                                                        : 'bg-yellow-400'
+                                                    }`}></span>
+                                                {odabranaFaktura.status?.status || 'Nacrt'}
+                                            </span>
+                                        </div>
+                                        <div>
                                             <p className="text-slate-400 text-sm mb-1">Tip dokumenta</p>
                                             <p className="text-white font-medium">{odabranaFaktura.TipDokumenta}</p>
                                         </div>
@@ -680,20 +744,51 @@ export default function NacrtiPrikaz() {
 
                                 {/* Akcije */}
 
-                                <div className="flex gap-3">
+                                <div className="flex flex-col gap-3">
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => preuzmiPDF(odabranaFaktura.id)}
+                                            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
+                                        >
+                                            <Download size={18} />
+                                            Preuzmi PDF
+                                        </button>
+                                        <button
+                                            onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                            className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
+                                        >
+                                            <Eye size={18} />
+                                            Pregledaj PDF
+                                        </button>
+                                    </div>
+
+                                    {/* Dugme za prihvatanje fakture */}
                                     <button
-                                        onClick={() => preuzmiPDF(odabranaFaktura.id)}
-                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
+                                        onClick={() => prihvatiFakturu(odabranaFaktura.id)}
+                                        disabled={prihvatanjeFakture || odabranaFaktura.status?.status === 'prihvacen'}
+                                        className={`w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl transition-all font-medium shadow-lg ${odabranaFaktura.status?.status === 'prihvacen'
+                                            ? 'bg-slate-600 text-slate-300 cursor-not-allowed'
+                                            : prihvatanjeFakture
+                                                ? 'bg-purple-400 text-white cursor-wait'
+                                                : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-500/20'
+                                            }`}
                                     >
-                                        <Download size={18} />
-                                        Preuzmi PDF
-                                    </button>
-                                    <button
-                                        onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
-                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
-                                    >
-                                        <Eye size={18} />
-                                        Pregledaj PDF
+                                        {prihvatanjeFakture ? (
+                                            <>
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                Prihvatam...
+                                            </>
+                                        ) : odabranaFaktura.status?.status === 'prihvacen' ? (
+                                            <>
+                                                <FileText size={18} />
+                                                Faktura je već prihvaćena
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FileText size={18} />
+                                                Prihvati fakturu
+                                            </>
+                                        )}
                                     </button>
                                 </div>
                             </div>

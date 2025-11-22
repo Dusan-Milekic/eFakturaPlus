@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Upload, Download, Search, Filter, X, Eye, ChevronLeft } from 'lucide-react';
+import { FileText, Download, Search, Eye, ChevronLeft } from 'lucide-react';
 
 interface Dokument {
     id: number;
@@ -74,8 +74,9 @@ interface StatistikaApiResponse {
 
 interface ApiResponse {
     success: boolean;
-    message: string;
-    data: FakturaApiResponse[];
+    message?: string;
+    data?: FakturaApiResponse[];
+    fakture?: FakturaApiResponse[];
     statistika?: StatistikaApiResponse;
 }
 
@@ -87,6 +88,12 @@ interface DetaljiFakture extends FakturaApiResponse {
     rok_placanja_dani?: number;
     popust_procenat?: number;
     popust_iznos?: number;
+}
+
+interface DetaljFaktureApiResponse {
+    success: boolean;
+    message?: string;
+    data: DetaljiFakture;
 }
 
 export default function UlazniDokumenti() {
@@ -110,6 +117,7 @@ export default function UlazniDokumenti() {
     const [odabranaFaktura, setOdabranaFaktura] = useState<DetaljiFakture | null>(null);
     const [prikaziDetalje, setPrikaziDetalje] = useState<boolean>(false);
     const [ucitavanjeDetalja, setUcitavanjeDetalja] = useState<boolean>(false);
+    const [prihvatanjeFakture, setPrihvatanjeFakture] = useState<boolean>(false);
 
     // Učitaj fakture sa servera
     useEffect(() => {
@@ -137,7 +145,6 @@ export default function UlazniDokumenti() {
                 return;
             }
 
-            // ✅ JEDINA RAZLIKA - ovde menjamo fetch link
             const params = new URLSearchParams({
                 kupac_id: userData.id.toString(),
                 per_page: '50'
@@ -160,16 +167,10 @@ export default function UlazniDokumenti() {
                 throw new Error(errorData?.message || `HTTP greška! Status: ${response.status}`);
             }
 
-            const result: any = await response.json();
-
-            console.log('🔥 CELA STRUKTURA:', result);
-            console.log('🔥 result.data:', result.data);
-            console.log('🔥 result.fakture:', result.fakture);
-            console.log('🔥 result keys:', Object.keys(result));
+            const result: ApiResponse = await response.json();
 
             // Proveri gde su fakture - može biti result.data ili result.fakture
-            const fakture = result.data || result.fakture || [];
-            console.log('✅ Našao fakture:', fakture);
+            const fakture: FakturaApiResponse[] = result.data || result.fakture || [];
 
             if (result.success && fakture.length > 0) {
                 const mapovaniFakture: Dokument[] = fakture.map((faktura: FakturaApiResponse) => {
@@ -178,20 +179,13 @@ export default function UlazniDokumenti() {
                     console.log('👤 Type of prodavac:', typeof faktura.prodavac);
                     console.log('👤 Prodavac keys:', faktura.prodavac ? Object.keys(faktura.prodavac) : 'nema');
 
-                    // Pokušaj sve moguće varijante
+                    // Pokušaj sve moguće varijante za naziv prodavca
                     let prodavacNaziv = 'N/A';
                     if (faktura.prodavac) {
-                        if (typeof faktura.prodavac === 'object') {
-                            prodavacNaziv = faktura.prodavac.naziv ||
-                                faktura.prodavac.naziv_firme ||
-                                faktura.prodavac.name ||
-                                'N/A';
-                        } else {
-                            prodavacNaziv = String(faktura.prodavac);
-                        }
+                        prodavacNaziv = faktura.prodavac.naziv ||
+                            faktura.prodavac.naziv_firme ||
+                            'N/A';
                     }
-
-                    console.log('✅ Odabran naziv:', prodavacNaziv);
 
                     return {
                         id: faktura.id,
@@ -244,7 +238,6 @@ export default function UlazniDokumenti() {
             const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
             const csrfToken = csrfTokenElement?.getAttribute('content');
 
-            // API poziv za detalje fakture - isti kao NacrtiPrikaz
             const response = await fetch(
                 `/vratiFakturu/${fakturaId}`,
                 {
@@ -264,7 +257,7 @@ export default function UlazniDokumenti() {
                 throw new Error(errorData?.message || `HTTP greška! Status: ${response.status}`);
             }
 
-            const result = await response.json();
+            const result: DetaljFaktureApiResponse = await response.json();
 
             if (result.success) {
                 setOdabranaFaktura(result.data);
@@ -277,6 +270,55 @@ export default function UlazniDokumenti() {
             setError(error instanceof Error ? error.message : 'Nepoznata greška');
         } finally {
             setUcitavanjeDetalja(false);
+        }
+    };
+
+    // Funkcija za prihvatanje fakture
+    const prihvatiFakturu = async (fakturaId: number): Promise<void> => {
+        try {
+            setPrihvatanjeFakture(true);
+
+            const csrfTokenElement = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]');
+            const csrfToken = csrfTokenElement?.getAttribute('content');
+
+            const response = await fetch(`/prihvatiFakturu/${fakturaId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    ...(csrfToken && { 'X-CSRF-TOKEN': csrfToken })
+                },
+                credentials: 'include'
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => null);
+                throw new Error(errorData?.message || 'Greška pri prihvatanju fakture');
+            }
+
+            interface PrihvatiResponse {
+                success: boolean;
+                message?: string;
+            }
+
+            const result: PrihvatiResponse = await response.json();
+
+            if (result.success) {
+                alert('Faktura je uspešno prihvaćena!');
+                // Osveži listu faktura
+                await ucitajFakture();
+                // Osveži detalje ako je faktura otvorena
+                if (odabranaFaktura && odabranaFaktura.id === fakturaId) {
+                    await ucitajDetaljeFakture(fakturaId);
+                }
+            } else {
+                throw new Error(result.message || 'Greška pri prihvatanju fakture');
+            }
+        } catch (err) {
+            console.error('Greška:', err);
+            alert(err instanceof Error ? err.message : 'Došlo je do greške pri prihvatanju fakture');
+        } finally {
+            setPrihvatanjeFakture(false);
         }
     };
 
@@ -330,8 +372,10 @@ export default function UlazniDokumenti() {
     const getStatusColor = (status: string): string => {
         switch (status?.toLowerCase()) {
             case 'poslato':
+            case 'primljen':
                 return 'bg-blue-500/20 text-blue-400';
             case 'odobreno':
+            case 'prihvacen':
                 return 'bg-green-500/20 text-green-400';
             case 'odbijeno':
                 return 'bg-red-500/20 text-red-400';
@@ -738,20 +782,51 @@ export default function UlazniDokumenti() {
                             </div>
 
                             {/* Akcije */}
-                            <div className="flex gap-3">
+                            <div className="flex flex-col gap-3">
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
+                                    >
+                                        <Download size={18} />
+                                        Preuzmi PDF
+                                    </button>
+                                    <button
+                                        onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
+                                        className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
+                                    >
+                                        <Eye size={18} />
+                                        Pregledaj PDF
+                                    </button>
+                                </div>
+
+                                {/* Dugme za prihvatanje fakture */}
                                 <button
-                                    onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
-                                    className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-blue-500/20"
+                                    onClick={() => prihvatiFakturu(odabranaFaktura.id)}
+                                    disabled={prihvatanjeFakture || odabranaFaktura.status?.status === 'prihvacen'}
+                                    className={`w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl transition-all font-medium shadow-lg ${odabranaFaktura.status?.status === 'prihvacen'
+                                        ? 'bg-slate-600 text-slate-300 cursor-not-allowed'
+                                        : prihvatanjeFakture
+                                            ? 'bg-purple-400 text-white cursor-wait'
+                                            : 'bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-purple-500/20'
+                                        }`}
                                 >
-                                    <Download size={18} />
-                                    Preuzmi PDF
-                                </button>
-                                <button
-                                    onClick={() => window.open(`/generisiPDF/${odabranaFaktura.id}`, '_blank')}
-                                    className="flex-1 flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-xl transition-all font-medium shadow-lg shadow-emerald-500/20"
-                                >
-                                    <Eye size={18} />
-                                    Pregledaj PDF
+                                    {prihvatanjeFakture ? (
+                                        <>
+                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                            Prihvatam...
+                                        </>
+                                    ) : odabranaFaktura.status?.status === 'prihvacen' ? (
+                                        <>
+                                            <FileText size={18} />
+                                            Faktura je već prihvaćena
+                                        </>
+                                    ) : (
+                                        <>
+                                            <FileText size={18} />
+                                            Prihvati fakturu
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </div>

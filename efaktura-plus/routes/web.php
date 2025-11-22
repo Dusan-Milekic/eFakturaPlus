@@ -82,6 +82,8 @@ Route::get("/UlazniDokumenti", function () {
 // GET /api/fakture/ulazne?kupac_id=1&status=plaćeno&search=test&per_page=20
 Route::get('/api/fakture/ulazne', [FakturaController::class, 'ucitajFaktureZaKupca']);
 Route::get('/api/ulazne-fakture/statistika', [StatusController::class, 'statistikaUlaznihFaktura']);
+Route::post('/prihvatiFakturu/{fakturaId}', [StatusController::class, 'prihvatiFakturu']);
+
 // Admin login rute
 Route::get('/admin', [DatabaseController::class, 'login'])->name('admin.login');
 Route::post('/admin', [DatabaseController::class, 'login'])->name('admin.login.submit');

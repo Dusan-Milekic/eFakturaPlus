@@ -109,6 +109,7 @@ export default function NacrtiPrikaz() {
 
     // Učitaj fakture sa servera
     useEffect(() => {
+        console.log('🚀 useEffect - Učitavam fakture...');
         ucitajFakture();
     }, []);
 
@@ -157,6 +158,13 @@ export default function NacrtiPrikaz() {
 
             const result: ApiResponse = await response.json();
 
+            console.log('🔍 BACKEND RESPONSE:', result);
+            console.log('📊 Broj faktura u responsu:', result.data?.length);
+            console.log('📄 Fakture:', result.data?.map(f => ({
+                id: f.id,
+                broj: f.BrojDokumenta
+            })));
+
             if (result.success) {
                 const mapovaniFakture: Dokument[] = result.data.map((faktura: FakturaApiResponse) => {
                     return {
@@ -173,6 +181,12 @@ export default function NacrtiPrikaz() {
                         ukupnoSaPDV: faktura.ukupno_sa_pdv
                     };
                 });
+
+                console.log('✅ Mapirane fakture:', mapovaniFakture.length);
+                console.log('📋 Dokumenti:', mapovaniFakture.map(d => ({
+                    id: d.id,
+                    broj: d.brojDokumenta
+                })));
 
                 setDokumenti(mapovaniFakture);
 

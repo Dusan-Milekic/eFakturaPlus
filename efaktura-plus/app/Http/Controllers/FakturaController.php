@@ -526,7 +526,7 @@ class FakturaController extends Controller
 
     public function vratiFakturu($id, Request $request)
     {
-        $faktura = Faktura::with(['prodavac', 'kupac'])->find($id);
+        $faktura = Faktura::with(['prodavac', 'kupac', 'status'])->find($id);
 
         if (!$faktura) {
             return response()->json([
@@ -822,12 +822,26 @@ class FakturaController extends Controller
                 ], 422);
             }
 
+            // ✅ PROVERI DA LI VEĆ POSTOJI FAKTURA SA ISTIM BROJEM
+            $postojecaFaktura = DB::table('faktura')
+                ->where('BrojDokumenta', $request->brojDokumenta)
+                ->first();
+
+            if ($postojecaFaktura) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Faktura sa brojem ' . $request->brojDokumenta . ' već postoji',
+                    'error_code' => 'DUPLICATE_INVOICE_NUMBER'
+                ], 409); // 409 Conflict
+            }
+
             DB::beginTransaction();
 
             $prodavac = DB::table('pravno_lice')->where('pib', $request->prodavacPib)->first();
             $kupac = DB::table('pravno_lice')->where('jmbg', $request->kupacJmbg)->first();
 
             if (!$prodavac) {
+                DB::rollBack(); // ✅ Rollback
                 return response()->json([
                     'success' => false,
                     'message' => 'Prodavac nije pronađen'
@@ -835,6 +849,7 @@ class FakturaController extends Controller
             }
 
             if (!$kupac) {
+                DB::rollBack(); // ✅ Rollback
                 return response()->json([
                     'success' => false,
                     'message' => 'Kupac nije pronađen'
@@ -896,7 +911,10 @@ class FakturaController extends Controller
 
             Log::info('Faktura uspešno poslata', [
                 'faktura_id' => $fakturaId,
-                'broj_dokumenta' => $request->brojDokumenta
+                'broj_dokumenta' => $request->brojDokumenta,
+                'prodavac_id' => $prodavac->id,
+                'kupac_id' => $kupac->id,
+                'status' => 'primljen'
             ]);
 
             return response()->json([
@@ -905,10 +923,12 @@ class FakturaController extends Controller
                 'data' => [
                     'faktura_id' => $fakturaId,
                     'broj_dokumenta' => $request->brojDokumenta,
-                    'ukupno_bez_pdv' => $ukupnoBezPDV,
-                    'ukupan_pdv' => $ukupanPDV,
-                    'ukupno_sa_pdv' => $ukupnoSaPDV,
-                    'status' => 'primljen' // ✅ Dodato u response
+                    'ukupno_bez_pdv' => round($ukupnoBezPDV, 2),
+                    'ukupan_pdv' => round($ukupanPDV, 2),
+                    'ukupno_sa_pdv' => round($ukupnoSaPDV, 2),
+                    'status' => 'primljen',
+                    'prodavac_id' => $prodavac->id,
+                    'kupac_id' => $kupac->id
                 ]
             ], 201);
 
@@ -917,7 +937,12 @@ class FakturaController extends Controller
 
             Log::error('Greška pri slanju fakture', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
+                'request' => [
+                    'brojDokumenta' => $request->brojDokumenta ?? null,
+                    'prodavacPib' => $request->prodavacPib ?? null,
+                    'kupacJmbg' => $request->kupacJmbg ?? null
+                ]
             ]);
 
             return response()->json([
